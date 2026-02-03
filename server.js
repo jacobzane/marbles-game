@@ -317,6 +317,7 @@ function enterLobby() {
 function startGame(startingPlayer) {
   gameState.deck = createDeck();
   gameState.gameStarted = true;
+  gameState.movesLog = []; // Reset moves log for new game
 
   // Set starting player
   const startIndex = gameState.playerOrder.indexOf(startingPlayer);
