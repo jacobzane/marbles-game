@@ -418,26 +418,27 @@ body {
     border-radius: 8px;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: center;
+    padding-top: 8px;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     border: 3px solid transparent;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    transform: translateY(60px);
+    transform: translateY(50px);
     position: relative;
     z-index: 1;
 }
 
 .card:hover {
-    transform: translateY(0);
+    transform: translateY(40px);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
     z-index: 10;
 }
 
 .card.selected {
     border-color: #667eea;
-    transform: translateY(-5px);
+    transform: translateY(35px);
     box-shadow: 0 10px 25px rgba(102, 126, 234, 0.6);
     z-index: 20;
 }
@@ -666,15 +667,16 @@ body {
     .card {
         width: 55px;
         height: 85px;
-        transform: translateY(50px);
+        padding-top: 6px;
+        transform: translateY(42px);
     }
 
     .card:hover {
-        transform: translateY(0);
+        transform: translateY(34px);
     }
 
     .card.selected {
-        transform: translateY(-5px);
+        transform: translateY(30px);
     }
 
     .card-value, .card-suit {
