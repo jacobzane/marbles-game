@@ -15,7 +15,11 @@ let homeChoiceState = null;
 let distanceCountState = {
     active: false,
     startPos: null,
-    currentPos: null
+    startType: null, // 'track' or 'home'
+    startPlayer: null, // player position for home spaces
+    currentPos: null,
+    currentType: null,
+    currentPlayer: null
 };
 
 // DOM Elements
@@ -315,10 +319,11 @@ function updateStartingPlayerDisplay(startingPlayer) {
 
 function renderGame() {
     if (!gameState || !gameState.gameStarted) return;
-    
+
     renderBoard();
     renderHand();
     renderGameInfo();
+    renderMovesLog();
 }
 
 function isPlayerFinished(player) {
@@ -1359,7 +1364,9 @@ function renderBoard() {
                 fill: (isValidHomeDest || isHomeChoiceHome) ? '#90EE90' : 'transparent',
                 stroke: playerFinished ? '#FFD700' : getPlayerColor(pos),
                 'stroke-width': playerFinished ? 4 : 3,
-                filter: playerFinished ? 'url(#goldGlow)' : ''
+                filter: playerFinished ? 'url(#goldGlow)' : '',
+                'data-home-position': i,
+                'data-home-player': pos
             });
             
             if (isValidHomeDest) {
@@ -1587,6 +1594,25 @@ function renderGameInfo() {
     const isMyTurn = currentPlayer === myPosition;
     document.getElementById('turnIndicator').textContent = isMyTurn ? "It's your turn!" : '';
     document.getElementById('turnIndicator').className = isMyTurn ? 'your-turn' : '';
+}
+
+function renderMovesLog() {
+    const movesLogContent = document.getElementById('movesLogContent');
+    if (!movesLogContent || !gameState.movesLog) return;
+
+    movesLogContent.innerHTML = '';
+
+    if (gameState.movesLog.length === 0) {
+        movesLogContent.innerHTML = '<div class="move-entry" style="text-align: center; color: #888;">No moves yet</div>';
+        return;
+    }
+
+    gameState.movesLog.forEach(entry => {
+        const moveEntry = document.createElement('div');
+        moveEntry.className = 'move-entry';
+        moveEntry.innerHTML = `<span class="move-entry-player">${entry.player}:</span> played ${entry.card}`;
+        movesLogContent.appendChild(moveEntry);
+    });
 }
 
 function onCardClick(cardIndex) {
@@ -2006,7 +2032,9 @@ function initializeDistanceCounter() {
     // Touch support
     svg.addEventListener('touchstart', (e) => {
         const touch = e.touches[0];
-        handleDistanceStart({ clientX: touch.clientX, clientY: touch.clientY, target: e.target });
+        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+        handleDistanceStart({ clientX: touch.clientX, clientY: touch.clientY, target: element });
+        e.preventDefault();
     });
     svg.addEventListener('touchmove', (e) => {
         const touch = e.touches[0];
@@ -2018,10 +2046,25 @@ function initializeDistanceCounter() {
 
 function handleDistanceStart(e) {
     const trackPos = e.target.getAttribute('data-track-position');
+    const homePos = e.target.getAttribute('data-home-position');
+    const homePlayer = e.target.getAttribute('data-home-player');
+
     if (trackPos !== null) {
         distanceCountState.active = true;
         distanceCountState.startPos = parseInt(trackPos);
+        distanceCountState.startType = 'track';
+        distanceCountState.startPlayer = null;
         distanceCountState.currentPos = distanceCountState.startPos;
+        distanceCountState.currentType = 'track';
+        distanceCountState.currentPlayer = null;
+    } else if (homePos !== null && homePlayer !== null) {
+        distanceCountState.active = true;
+        distanceCountState.startPos = parseInt(homePos);
+        distanceCountState.startType = 'home';
+        distanceCountState.startPlayer = homePlayer;
+        distanceCountState.currentPos = distanceCountState.startPos;
+        distanceCountState.currentType = 'home';
+        distanceCountState.currentPlayer = homePlayer;
     }
 }
 
@@ -2037,11 +2080,19 @@ function handleDistanceMove(e) {
     const svgX = (x / rect.width) * 800;
     const svgY = (y / rect.height) * 800;
 
-    // Find nearest track position
-    const nearestPos = findNearestTrackPosition(svgX, svgY);
-    if (nearestPos !== null && nearestPos !== distanceCountState.currentPos) {
-        distanceCountState.currentPos = nearestPos;
-        renderBoard(); // Re-render to show distance line
+    // Find nearest position (track or home)
+    const nearestPos = findNearestPosition(svgX, svgY);
+    if (nearestPos !== null) {
+        const changed = nearestPos.pos !== distanceCountState.currentPos ||
+            nearestPos.type !== distanceCountState.currentType ||
+            nearestPos.player !== distanceCountState.currentPlayer;
+
+        if (changed) {
+            distanceCountState.currentPos = nearestPos.pos;
+            distanceCountState.currentType = nearestPos.type;
+            distanceCountState.currentPlayer = nearestPos.player;
+            renderBoard(); // Re-render to show distance line
+        }
     }
 }
 
@@ -2049,12 +2100,16 @@ function handleDistanceEnd() {
     if (distanceCountState.active) {
         distanceCountState.active = false;
         distanceCountState.startPos = null;
+        distanceCountState.startType = null;
+        distanceCountState.startPlayer = null;
         distanceCountState.currentPos = null;
+        distanceCountState.currentType = null;
+        distanceCountState.currentPlayer = null;
         renderBoard(); // Clear the distance line
     }
 }
 
-function findNearestTrackPosition(svgX, svgY) {
+function findNearestPosition(svgX, svgY) {
     const centerX = 400;
     const centerY = 400;
     const squareSize = 550;
@@ -2063,30 +2118,121 @@ function findNearestTrackPosition(svgX, svgY) {
     let nearest = null;
     let minDist = Infinity;
 
+    // Check all track positions
     for (let i = 0; i < 72; i++) {
         const pos = getSquarePosition(i, centerX, centerY, squareSize, rotationOffset);
         const dist = Math.sqrt((pos.x - svgX) ** 2 + (pos.y - svgY) ** 2);
         if (dist < minDist && dist < 30) { // Within 30 units
             minDist = dist;
-            nearest = i;
+            nearest = { pos: i, type: 'track', player: null };
         }
     }
+
+    // Check all home positions for each player
+    const positions = ['Seat1', 'Seat2', 'Seat3', 'Seat4'];
+    positions.forEach((player) => {
+        if (!gameState || !gameState.players[player]) return;
+
+        const homeEntry = gameState.board[player].homeEntry;
+        const homeEntryPos = getSquarePosition(homeEntry, centerX, centerY, squareSize, rotationOffset);
+        const homeInward = getPerpendicularInward(homeEntry, rotationOffset);
+        const homeLeft = getLeftDirection(homeInward);
+
+        const homeSpacing = squareSize / 18;
+        const homeStartOffset = homeSpacing;
+
+        const homeOffsets = [
+            { inward: homeStartOffset, left: 0 },
+            { inward: homeStartOffset + homeSpacing, left: 0 },
+            { inward: homeStartOffset + homeSpacing * 2, left: 0 },
+            { inward: homeStartOffset + homeSpacing * 2, left: homeSpacing },
+            { inward: homeStartOffset + homeSpacing * 3, left: homeSpacing }
+        ];
+
+        for (let i = 0; i < 5; i++) {
+            const offset = homeOffsets[i];
+            const homeX = homeEntryPos.x + homeInward.x * offset.inward + homeLeft.x * offset.left;
+            const homeY = homeEntryPos.y + homeInward.y * offset.inward + homeLeft.y * offset.left;
+
+            const dist = Math.sqrt((homeX - svgX) ** 2 + (homeY - svgY) ** 2);
+            if (dist < minDist && dist < 30) { // Within 30 units
+                minDist = dist;
+                nearest = { pos: i, type: 'home', player: player };
+            }
+        }
+    });
 
     return nearest;
 }
 
-function calculateTrackDistance(start, end) {
-    if (start === end) return 0;
+function calculateDistance(startPos, startType, startPlayer, endPos, endType, endPlayer) {
+    // Both positions on track
+    if (startType === 'track' && endType === 'track') {
+        if (startPos === endPos) return { forward: 0, backward: 0 };
 
-    // Calculate forward distance
-    let forward = 0;
-    let current = start;
-    while (current !== end && forward < 72) {
-        forward++;
-        current = (current + 1) % 72;
+        // Calculate forward distance
+        let forward = 0;
+        let current = startPos;
+        while (current !== endPos && forward < 72) {
+            forward++;
+            current = (current + 1) % 72;
+        }
+
+        // Calculate backward distance
+        let backward = 0;
+        current = startPos;
+        while (current !== endPos && backward < 72) {
+            backward++;
+            current = (current - 1 + 72) % 72;
+        }
+
+        return { forward, backward };
     }
 
-    return forward;
+    // Start on track, end in home
+    if (startType === 'track' && endType === 'home') {
+        if (!endPlayer) {
+            return { forward: null, backward: null };
+        }
+
+        const homeEntry = gameState.board[endPlayer].homeEntry;
+
+        // Calculate distance to home entry
+        let distToHome = 0;
+        let current = startPos;
+        while (current !== homeEntry && distToHome < 72) {
+            distToHome++;
+            current = (current + 1) % 72;
+        }
+
+        // Add distance into home (endPos is 0-4, representing home index)
+        const forward = distToHome + endPos + 1;
+
+        return { forward, backward: null };
+    }
+
+    // Start in home, end on track (marbles don't move out of home backwards)
+    if (startType === 'home' && endType === 'track') {
+        return { forward: null, backward: null };
+    }
+
+    // Both in home
+    if (startType === 'home' && endType === 'home') {
+        if (startPlayer !== endPlayer) {
+            return { forward: null, backward: null }; // Different players
+        }
+
+        if (startPos === endPos) return { forward: 0, backward: 0 };
+
+        // Can only move forward in home
+        if (endPos > startPos) {
+            return { forward: endPos - startPos, backward: null };
+        } else {
+            return { forward: null, backward: null }; // Can't move backward in home
+        }
+    }
+
+    return { forward: null, backward: null };
 }
 
 function drawDistanceLine() {
@@ -2099,17 +2245,65 @@ function drawDistanceLine() {
     const squareSize = 550;
     const rotationOffset = getRotationOffset();
 
-    const startPos = getSquarePosition(distanceCountState.startPos, centerX, centerY, squareSize, rotationOffset);
-    const endPos = getSquarePosition(distanceCountState.currentPos, centerX, centerY, squareSize, rotationOffset);
+    // Get visual positions for start and end
+    let startVisualPos, endVisualPos;
+
+    if (distanceCountState.startType === 'track') {
+        startVisualPos = getSquarePosition(distanceCountState.startPos, centerX, centerY, squareSize, rotationOffset);
+    } else {
+        // Home position - need to calculate visual position
+        const homeEntry = gameState.board[distanceCountState.startPlayer].homeEntry;
+        const homeEntryPos = getSquarePosition(homeEntry, centerX, centerY, squareSize, rotationOffset);
+        const homeInward = getPerpendicularInward(homeEntry, rotationOffset);
+        const homeLeft = getLeftDirection(homeInward);
+        const homeSpacing = squareSize / 18;
+        const homeStartOffset = homeSpacing;
+        const homeOffsets = [
+            { inward: homeStartOffset, left: 0 },
+            { inward: homeStartOffset + homeSpacing, left: 0 },
+            { inward: homeStartOffset + homeSpacing * 2, left: 0 },
+            { inward: homeStartOffset + homeSpacing * 2, left: homeSpacing },
+            { inward: homeStartOffset + homeSpacing * 3, left: homeSpacing }
+        ];
+        const offset = homeOffsets[distanceCountState.startPos];
+        startVisualPos = {
+            x: homeEntryPos.x + homeInward.x * offset.inward + homeLeft.x * offset.left,
+            y: homeEntryPos.y + homeInward.y * offset.inward + homeLeft.y * offset.left
+        };
+    }
+
+    if (distanceCountState.currentType === 'track') {
+        endVisualPos = getSquarePosition(distanceCountState.currentPos, centerX, centerY, squareSize, rotationOffset);
+    } else {
+        // Home position
+        const homeEntry = gameState.board[distanceCountState.currentPlayer].homeEntry;
+        const homeEntryPos = getSquarePosition(homeEntry, centerX, centerY, squareSize, rotationOffset);
+        const homeInward = getPerpendicularInward(homeEntry, rotationOffset);
+        const homeLeft = getLeftDirection(homeInward);
+        const homeSpacing = squareSize / 18;
+        const homeStartOffset = homeSpacing;
+        const homeOffsets = [
+            { inward: homeStartOffset, left: 0 },
+            { inward: homeStartOffset + homeSpacing, left: 0 },
+            { inward: homeStartOffset + homeSpacing * 2, left: 0 },
+            { inward: homeStartOffset + homeSpacing * 2, left: homeSpacing },
+            { inward: homeStartOffset + homeSpacing * 3, left: homeSpacing }
+        ];
+        const offset = homeOffsets[distanceCountState.currentPos];
+        endVisualPos = {
+            x: homeEntryPos.x + homeInward.x * offset.inward + homeLeft.x * offset.left,
+            y: homeEntryPos.y + homeInward.y * offset.inward + homeLeft.y * offset.left
+        };
+    }
 
     const svg = gameBoard;
 
     // Draw line
     const line = createSVGElement('line', {
-        x1: startPos.x,
-        y1: startPos.y,
-        x2: endPos.x,
-        y2: endPos.y,
+        x1: startVisualPos.x,
+        y1: startVisualPos.y,
+        x2: endVisualPos.x,
+        y2: endVisualPos.y,
         stroke: '#FFD700',
         'stroke-width': 3,
         'stroke-dasharray': '5,5',
@@ -2117,16 +2311,40 @@ function drawDistanceLine() {
     });
     svg.appendChild(line);
 
-    // Calculate and display distance
-    const distance = calculateTrackDistance(distanceCountState.startPos, distanceCountState.currentPos);
-    const midX = (startPos.x + endPos.x) / 2;
-    const midY = (startPos.y + endPos.y) / 2;
+    // Calculate distances
+    const distances = calculateDistance(
+        distanceCountState.startPos,
+        distanceCountState.startType,
+        distanceCountState.startPlayer,
+        distanceCountState.currentPos,
+        distanceCountState.currentType,
+        distanceCountState.currentPlayer
+    );
 
-    // Background for text
+    const midX = (startVisualPos.x + endVisualPos.x) / 2;
+    const midY = (startVisualPos.y + endVisualPos.y) / 2;
+
+    // Determine what to display
+    let displayText = '';
+    if (distances.forward === 0 && distances.backward === 0) {
+        displayText = '0';
+    } else if (distances.forward !== null && distances.backward !== null) {
+        // Show both forward and backward
+        displayText = `↑${distances.forward} ↓${distances.backward}`;
+    } else if (distances.forward !== null) {
+        displayText = `${distances.forward}`;
+    } else if (distances.backward !== null) {
+        displayText = `${distances.backward}`;
+    } else {
+        displayText = 'N/A';
+    }
+
+    // Background for text (adjust width based on content)
+    const bgWidth = displayText.length > 4 ? 80 : 50;
     const textBg = createSVGElement('rect', {
-        x: midX - 25,
+        x: midX - bgWidth / 2,
         y: midY - 18,
-        width: 50,
+        width: bgWidth,
         height: 36,
         rx: 5,
         fill: '#FFD700',
@@ -2143,11 +2361,11 @@ function drawDistanceLine() {
         'text-anchor': 'middle',
         'dominant-baseline': 'middle',
         fill: '#000',
-        'font-size': '20',
+        'font-size': '18',
         'font-weight': 'bold',
         'pointer-events': 'none'
     });
-    text.textContent = distance;
+    text.textContent = displayText;
     svg.appendChild(text);
 }
 

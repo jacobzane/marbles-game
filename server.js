@@ -123,6 +123,24 @@ function getCardValue(card) {
   return parseInt(card.value);
 }
 
+function addMoveToLog(player, card) {
+  const playerName = gameState.players[player]?.name || player;
+  const cardDisplay = `${card.value}${card.suit !== 'red' && card.suit !== 'black' ? ' ' + card.suit[0].toUpperCase() : ''}`;
+
+  const logEntry = {
+    player: playerName,
+    card: cardDisplay,
+    timestamp: Date.now()
+  };
+
+  gameState.movesLog.unshift(logEntry); // Add to front
+
+  // Keep only last 20 moves
+  if (gameState.movesLog.length > 20) {
+    gameState.movesLog = gameState.movesLog.slice(0, 20);
+  }
+}
+
 function getMarbleOnTrack(trackPosition) {
   for (let player of gameState.playerOrder) {
     const marbles = gameState.players[player].marbles;
@@ -586,6 +604,7 @@ io.on('connection', (socket) => {
     if (result.success) {
       player.hand.splice(cardIndex, 1);
       player.discardPile.push(card);
+      addMoveToLog(position, card);
       dealCards(position, 1);
 
       if (checkWinCondition(position)) {
@@ -625,8 +644,9 @@ io.on('connection', (socket) => {
 
     const card = player.hand.splice(cardIndex, 1)[0];
     player.discardPile.push(card);
+    addMoveToLog(position, card);
     dealCards(position, 1);
-    
+
     gameState.pendingSplitMove = null;
     
     nextTurn();
