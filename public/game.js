@@ -111,8 +111,9 @@ socket.on('gameStarted', (state) => {
 socket.on('gameStateUpdate', (state) => {
     const previousPlayer = gameState ? gameState.playerOrder[gameState.currentPlayerIndex] : null;
     gameState = state;
+    console.log('Game state updated. movesLog:', gameState.movesLog);
     const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
-    
+
     // If turn changed, clear all local state
     if (previousPlayer !== currentPlayer) {
         splitMoveState = null;
@@ -124,7 +125,7 @@ socket.on('gameStateUpdate', (state) => {
             instructionEl.textContent = '';
         }
     }
-    
+
     renderGame();
 });
 
@@ -2063,6 +2064,16 @@ function initializeDistanceCounter() {
 }
 
 function handleDistanceStart(e) {
+    // Don't activate distance counter if waiting for destination selection (7/9 cards)
+    if (splitMoveState && (splitMoveState.awaitingDestination || splitMoveState.awaitingSecondDestination)) {
+        return;
+    }
+
+    // Don't activate if waiting for home choice
+    if (homeChoiceState) {
+        return;
+    }
+
     const trackPos = e.target.getAttribute('data-track-position');
     const homePos = e.target.getAttribute('data-home-position');
     const homePlayer = e.target.getAttribute('data-home-player');
