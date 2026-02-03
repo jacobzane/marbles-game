@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marble Card Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Login Screen -->
+        <div id="loginScreen" class="screen active">
+            <div class="login-container">
+                <h1>Marble Card Game</h1>
+                <p>Team game: Seats 1 & 3 vs Seats 2 & 4</p>
+                <input type="text" id="playerName" placeholder="Enter your name" maxlength="20">
+                <div class="position-select">
+                    <button class="position-btn" data-position="Seat1">Seat 1</button>
+                    <button class="position-btn" data-position="Seat2">Seat 2</button>
+                    <button class="position-btn" data-position="Seat3">Seat 3</button>
+                    <button class="position-btn" data-position="Seat4">Seat 4</button>
+                </div>
+                <div id="loginError" class="error-message"></div>
+            </div>
+        </div>
+
+        <!-- Lobby Screen -->
+        <div id="lobbyScreen" class="screen">
+            <div class="lobby-container">
+                <h1>Game Lobby</h1>
+                <p>All players ready! Waiting for Seat 1 to start the game...</p>
+
+                <div class="players-list">
+                    <div class="lobby-player" data-position="Seat1">
+                        <div class="lobby-player-label">Seat 1</div>
+                        <div class="lobby-player-name" id="lobbyPlayer1">Waiting...</div>
+                    </div>
+                    <div class="lobby-player" data-position="Seat2">
+                        <div class="lobby-player-label">Seat 2</div>
+                        <div class="lobby-player-name" id="lobbyPlayer2">Waiting...</div>
+                    </div>
+                    <div class="lobby-player" data-position="Seat3">
+                        <div class="lobby-player-label">Seat 3</div>
+                        <div class="lobby-player-name" id="lobbyPlayer3">Waiting...</div>
+                    </div>
+                    <div class="lobby-player" data-position="Seat4">
+                        <div class="lobby-player-label">Seat 4</div>
+                        <div class="lobby-player-name" id="lobbyPlayer4">Waiting...</div>
+                    </div>
+                </div>
+
+                <div id="lobbyControls" class="lobby-controls">
+                    <h3>Select Starting Player</h3>
+                    <div class="starting-player-select">
+                        <button class="btn btn-secondary start-player-btn" data-position="Seat1">Seat 1</button>
+                        <button class="btn btn-secondary start-player-btn" data-position="Seat2">Seat 2</button>
+                        <button class="btn btn-secondary start-player-btn" data-position="Seat3">Seat 3</button>
+                        <button class="btn btn-secondary start-player-btn" data-position="Seat4">Seat 4</button>
+                    </div>
+                    <button id="randomizeStartBtn" class="btn btn-primary">Randomize Start</button>
+                    <div class="selected-start-info">
+                        <p>Starting Player: <span id="selectedStartPlayer">Not selected</span></p>
+                    </div>
+                    <button id="beginGameBtn" class="btn btn-primary" disabled>Start Game</button>
+                </div>
+
+                <div id="lobbyWaiting" class="lobby-waiting">
+                    <p>Waiting for Seat 1 to start the game...</p>
+                    <p>Starting Player: <span id="waitingStartPlayer">Not selected</span></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="gameScreen" class="screen">
+            <div class="game-container">
+                <!-- Game Board -->
+                <div class="board-container">
+                    <svg id="gameBoard" width="800" height="800" viewBox="0 0 800 800">
+                        <!-- Board will be drawn here by JavaScript -->
+                    </svg>
+                </div>
+
+                <!-- Player Hand -->
+                <div class="hand-container">
+                    <div id="playerHand" class="hand"></div>
+                    <div class="hand-actions">
+                        <button id="discardBtn" class="btn btn-discard" disabled>Discard Card</button>
+                    </div>
+                    <div id="cardInstruction" class="card-instruction"></div>
+                </div>
+
+                <!-- Move Selection Modal -->
+                <div id="moveModal" class="modal">
+                    <div class="modal-content">
+                        <h3 id="modalTitle">Select Move</h3>
+                        <div id="modalBody"></div>
+                        <div class="modal-actions">
+                            <button id="confirmMoveBtn" class="btn btn-primary">Confirm</button>
+                            <button id="cancelMoveBtn" class="btn btn-secondary">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Win Screen -->
+        <div id="winScreen" class="screen">
+            <div class="win-container">
+                <h1>Game Over!</h1>
+                <h2 id="winnerText"></h2>
+                <button id="newGameBtn" class="btn btn-primary">New Game</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>

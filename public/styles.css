@@ -1,0 +1,484 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    min-height: 100vh;
+    color: #fff;
+}
+
+#app {
+    width: 100%;
+    min-height: 100vh;
+}
+
+.screen {
+    display: none;
+    width: 100%;
+    min-height: 100vh;
+}
+
+.screen.active {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Login Screen */
+.login-container {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 40px;
+    border-radius: 20px;
+    text-align: center;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.login-container h1 {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    color: #fff;
+}
+
+.login-container p {
+    color: #aaa;
+    margin-bottom: 30px;
+}
+
+#playerName {
+    width: 100%;
+    padding: 15px;
+    font-size: 1.1rem;
+    border: none;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+}
+
+.position-select {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.position-btn {
+    padding: 20px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.position-btn[data-position="Seat1"] {
+    background: #2196F3;
+    color: white;
+}
+
+.position-btn[data-position="Seat2"] {
+    background: #F44336;
+    color: white;
+}
+
+.position-btn[data-position="Seat3"] {
+    background: #4CAF50;
+    color: white;
+}
+
+.position-btn[data-position="Seat4"] {
+    background: #FF9800;
+    color: white;
+}
+
+.position-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.error-message {
+    color: #ff6b6b;
+    margin-top: 15px;
+    font-weight: bold;
+}
+
+/* Lobby Screen */
+.lobby-container {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 40px;
+    border-radius: 20px;
+    text-align: center;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    max-width: 600px;
+}
+
+.lobby-container h1 {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    color: #fff;
+}
+
+.lobby-container p {
+    color: #aaa;
+    margin-bottom: 30px;
+}
+
+.players-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.lobby-player {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    border-radius: 10px;
+    border: 3px solid transparent;
+}
+
+.lobby-player[data-position="Seat1"] {
+    border-color: #2196F3;
+}
+
+.lobby-player[data-position="Seat2"] {
+    border-color: #F44336;
+}
+
+.lobby-player[data-position="Seat3"] {
+    border-color: #4CAF50;
+}
+
+.lobby-player[data-position="Seat4"] {
+    border-color: #FF9800;
+}
+
+.lobby-player-label {
+    font-size: 0.9rem;
+    color: #aaa;
+    margin-bottom: 5px;
+}
+
+.lobby-player-name {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #fff;
+}
+
+.lobby-controls {
+    display: block;
+}
+
+.lobby-waiting {
+    display: none;
+}
+
+.lobby-controls h3 {
+    color: #fff;
+    margin-bottom: 15px;
+}
+
+.starting-player-select {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.start-player-btn {
+    padding: 15px;
+    font-size: 1rem;
+}
+
+.start-player-btn.selected {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    transform: scale(1.05);
+}
+
+.selected-start-info {
+    background: rgba(102, 126, 234, 0.3);
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+.selected-start-info p {
+    margin: 0;
+    color: #fff;
+    font-size: 1.1rem;
+}
+
+.selected-start-info span {
+    font-weight: bold;
+    color: #4CAF50;
+}
+
+#randomizeStartBtn {
+    margin-bottom: 20px;
+}
+
+/* Game Screen */
+.game-container {
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+
+/* Board Container */
+.board-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+#gameBoard {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+    max-width: 100%;
+    height: auto;
+}
+
+/* Marble styling - no transform on hover to prevent jitter */
+.marble {
+    cursor: pointer;
+}
+
+/* Hit area for marbles - larger clickable area */
+.marble-hit-area {
+    cursor: pointer;
+}
+
+.marble-hit-area:hover + .marble {
+    filter: brightness(1.3);
+}
+
+/* Hand Container */
+.hand-container {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 20px;
+    border-radius: 15px;
+    text-align: center;
+}
+
+.card-instruction {
+    background: rgba(102, 126, 234, 0.3);
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    margin-top: 15px;
+    font-size: 1rem;
+    min-height: 45px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.hand {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 15px;
+}
+
+.card {
+    width: 70px;
+    height: 100px;
+    background: white;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 3px solid transparent;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.card:hover {
+    transform: translateY(-10px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.card.selected {
+    border-color: #667eea;
+    transform: translateY(-15px);
+    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.5);
+}
+
+.card-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.card-suit {
+    font-size: 1.5rem;
+}
+
+.card-value.red, .card-suit.red {
+    color: #e74c3c;
+}
+
+.card-value.black, .card-suit.black {
+    color: #2c3e50;
+}
+
+/* Discard pile cards (smaller versions) */
+.discard-card {
+    display: inline-block;
+    background: white;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    margin-left: 8px;
+    border: 2px solid #ddd;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.discard-card.red {
+    color: #e74c3c;
+}
+
+.discard-card.black {
+    color: #2c3e50;
+}
+
+.hand-actions {
+    margin-top: 15px;
+}
+
+/* Buttons */
+.btn {
+    padding: 12px 30px;
+    font-size: 1rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.btn-discard {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-discard:hover:not(:disabled) {
+    background: #c0392b;
+}
+
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: #1a1a2e;
+    padding: 30px;
+    border-radius: 15px;
+    max-width: 500px;
+    width: 90%;
+    text-align: center;
+}
+
+.modal-content h3 {
+    margin-bottom: 20px;
+    color: #fff;
+}
+
+.modal-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+/* Win Screen */
+.win-container {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 60px;
+    border-radius: 20px;
+    text-align: center;
+    backdrop-filter: blur(10px);
+}
+
+.win-container h1 {
+    font-size: 3rem;
+    margin-bottom: 20px;
+    color: #ffd700;
+}
+
+.win-container h2 {
+    font-size: 1.8rem;
+    margin-bottom: 30px;
+    color: #fff;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    #gameBoard {
+        width: 100%;
+        height: auto;
+    }
+}
+
+@media (max-width: 600px) {
+    .card {
+        width: 55px;
+        height: 80px;
+    }
+    
+    .card-value, .card-suit {
+        font-size: 1.2rem;
+    }
+    
+    .seat-indicator {
+        font-size: 1.2rem;
+        padding: 10px 20px;
+    }
+}
