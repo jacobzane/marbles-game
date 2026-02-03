@@ -125,7 +125,18 @@ function getCardValue(card) {
 
 function addMoveToLog(player, card) {
   const playerName = gameState.players[player]?.name || player;
-  const cardDisplay = `${card.value}${card.suit !== 'red' && card.suit !== 'black' ? ' ' + card.suit[0].toUpperCase() : ''}`;
+
+  // Format card display
+  let cardDisplay = card.value;
+  if (card.suit !== 'red' && card.suit !== 'black') {
+    const suitSymbols = {
+      hearts: '♥',
+      diamonds: '♦',
+      clubs: '♣',
+      spades: '♠'
+    };
+    cardDisplay = `${card.value}${suitSymbols[card.suit] || ''}`;
+  }
 
   const logEntry = {
     player: playerName,
@@ -134,6 +145,7 @@ function addMoveToLog(player, card) {
   };
 
   gameState.movesLog.unshift(logEntry); // Add to front
+  console.log(`Move logged: ${playerName} played ${cardDisplay}, total moves: ${gameState.movesLog.length}`);
 
   // Keep only last 20 moves
   if (gameState.movesLog.length > 20) {
