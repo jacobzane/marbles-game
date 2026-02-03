@@ -2018,45 +2018,12 @@ function getCardValue(card) {
 function initializeDistanceCounter() {
     const svg = gameBoard;
 
+    // Only enable distance counter on desktop (mouse events only)
+    // Touch devices don't support this feature due to drag interaction conflicts
     svg.addEventListener('mousedown', handleDistanceStart);
     svg.addEventListener('mousemove', handleDistanceMove);
     svg.addEventListener('mouseup', handleDistanceEnd);
     svg.addEventListener('mouseleave', handleDistanceEnd);
-
-    // Touch support - only for distance counting, don't interfere with marble clicks
-    let touchStartTime = 0;
-    svg.addEventListener('touchstart', (e) => {
-        touchStartTime = Date.now();
-        const touch = e.touches[0];
-        const element = document.elementFromPoint(touch.clientX, touch.clientY);
-        handleDistanceStart({ clientX: touch.clientX, clientY: touch.clientY, target: element });
-        // Only prevent default if we actually started distance counting
-        if (distanceCountState.active) {
-            e.preventDefault();
-        }
-    });
-    svg.addEventListener('touchmove', (e) => {
-        if (distanceCountState.active) {
-            const touch = e.touches[0];
-            handleDistanceMove({ clientX: touch.clientX, clientY: touch.clientY });
-            e.preventDefault();
-        }
-    });
-    svg.addEventListener('touchend', (e) => {
-        const touchDuration = Date.now() - touchStartTime;
-        // If it was a quick tap (less than 200ms) and distance counter is active,
-        // it was probably meant to be a click, not a drag
-        if (touchDuration < 200 && distanceCountState.active) {
-            distanceCountState.active = false;
-            distanceCountState.startPos = null;
-            distanceCountState.startType = null;
-            distanceCountState.startPlayer = null;
-            distanceCountState.currentPos = null;
-            distanceCountState.currentType = null;
-            distanceCountState.currentPlayer = null;
-        }
-        handleDistanceEnd();
-    });
 }
 
 function handleDistanceStart(e) {
