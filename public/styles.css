@@ -282,11 +282,12 @@ body {
 /* Hand Container - Fixed at bottom */
 .hand-container {
     position: relative;
-    height: 140px;
-    padding: 0 10px 10px 10px;
+    height: 100px;
+    padding: 0 10px 0 10px;
     display: flex;
     flex-direction: column;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.3), transparent);
+    overflow: visible;
 }
 
 .hand-wrapper {
@@ -294,8 +295,8 @@ body {
     overflow: visible;
     display: flex;
     justify-content: center;
-    align-items: flex-end;
-    margin-bottom: 10px;
+    align-items: flex-start;
+    flex: 1;
 }
 
 .hand {
@@ -308,14 +309,14 @@ body {
 /* Instruction overlay */
 .card-instruction-overlay {
     position: absolute;
-    top: 10px;
+    top: 5px;
     left: 50%;
     transform: translateX(-50%);
     background: rgba(102, 126, 234, 0.9);
     color: #fff;
-    padding: 10px 20px;
+    padding: 8px 16px;
     border-radius: 8px;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     max-width: 80%;
     text-align: center;
     z-index: 100;
@@ -485,6 +486,7 @@ body {
     display: flex;
     justify-content: center;
     gap: 10px;
+    padding-bottom: 5px;
 }
 
 /* Buttons */
@@ -688,11 +690,11 @@ body {
     }
 
     .hand-wrapper {
-        height: 45px;
+        height: 42px;
     }
 
     .hand-container {
-        height: 120px;
+        height: 85px;
     }
 
     .card-instruction-overlay {
