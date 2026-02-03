@@ -94,12 +94,19 @@
 
                 <!-- Player Hand -->
                 <div class="hand-container">
-                    <div id="playerHand" class="hand"></div>
+                    <div id="cardInstruction" class="card-instruction-overlay"></div>
+                    <div class="hand-wrapper">
+                        <div id="playerHand" class="hand"></div>
+                    </div>
                     <div class="hand-actions">
                         <button id="discardBtn" class="btn btn-discard" disabled>Discard Card</button>
                     </div>
-                    <div id="cardInstruction" class="card-instruction"></div>
-                    <div id="movesLog" class="moves-log">
+                </div>
+
+                <!-- Floating Moves Log -->
+                <div id="movesLog" class="moves-log-floating">
+                    <button id="movesLogToggle" class="moves-log-toggle">📜</button>
+                    <div id="movesLogPanel" class="moves-log-panel">
                         <div class="moves-log-header">Recent Moves</div>
                         <div id="movesLogContent" class="moves-log-content"></div>
                     </div>

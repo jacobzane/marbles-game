@@ -46,6 +46,17 @@ const randomizeStartBtn = document.getElementById('randomizeStartBtn');
 const beginGameBtn = document.getElementById('beginGameBtn');
 let selectedStartingPlayer = null;
 
+// Moves log elements
+const movesLogToggle = document.getElementById('movesLogToggle');
+const movesLogPanel = document.getElementById('movesLogPanel');
+
+// Toggle moves log panel
+if (movesLogToggle && movesLogPanel) {
+    movesLogToggle.addEventListener('click', () => {
+        movesLogPanel.classList.toggle('visible');
+    });
+}
+
 // Password submission
 passwordSubmitBtn.addEventListener('click', () => {
     const password = gamePasswordInput.value.trim();

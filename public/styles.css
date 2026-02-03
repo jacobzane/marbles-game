@@ -225,24 +225,33 @@ body {
     margin-bottom: 20px;
 }
 
-/* Game Screen */
-.game-container {
-    width: 100%;
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 20px;
+/* Game Screen - Fixed Viewport */
+#gameScreen {
+    overflow: hidden;
 }
 
+.game-container {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
 
-/* Board Container */
+/* Board Container - Takes remaining space */
 .board-container {
+    flex: 1;
     display: flex;
     justify-content: center;
-    margin-bottom: 5px;
+    align-items: center;
+    overflow: hidden;
+    padding: 10px;
 }
 
 #gameBoard {
     max-width: 100%;
+    max-height: 100%;
+    width: auto;
     height: auto;
 }
 
@@ -270,30 +279,92 @@ body {
     filter: brightness(1.3);
 }
 
-/* Hand Container */
+/* Hand Container - Fixed at bottom */
 .hand-container {
-    padding: 20px;
-    text-align: center;
-}
-
-.card-instruction {
-    background: rgba(102, 126, 234, 0.3);
-    color: #fff;
-    padding: 12px 20px;
-    border-radius: 8px;
-    margin-top: 15px;
-    font-size: 1rem;
-    min-height: 45px;
+    position: relative;
+    height: 140px;
+    padding: 0 10px 10px 10px;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.3), transparent);
 }
 
-.moves-log {
-    margin-top: 20px;
-    background: rgba(255, 255, 255, 0.05);
+.hand-wrapper {
+    height: 50px;
+    overflow: visible;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    margin-bottom: 10px;
+}
+
+.hand {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+/* Instruction overlay */
+.card-instruction-overlay {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(102, 126, 234, 0.9);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    max-width: 80%;
+    text-align: center;
+    z-index: 100;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.card-instruction-overlay:empty {
+    display: none;
+}
+
+/* Floating Moves Log */
+.moves-log-floating {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 500;
+}
+
+.moves-log-toggle {
+    background: rgba(102, 126, 234, 0.9);
+    border: none;
+    border-radius: 8px;
+    padding: 10px 15px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s ease;
+}
+
+.moves-log-toggle:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+.moves-log-panel {
+    position: absolute;
+    top: 50px;
+    right: 0;
+    width: 280px;
+    background: rgba(26, 26, 46, 0.95);
     border-radius: 8px;
     overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    display: none;
+}
+
+.moves-log-panel.visible {
+    display: block;
 }
 
 .moves-log-header {
@@ -306,7 +377,7 @@ body {
 }
 
 .moves-log-content {
-    max-height: 150px;
+    max-height: 300px;
     overflow-y: auto;
     padding: 10px;
 }
@@ -340,14 +411,6 @@ body {
     margin-right: 5px;
 }
 
-.hand {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 15px;
-}
-
 .card {
     width: 70px;
     height: 100px;
@@ -358,20 +421,25 @@ body {
     justify-content: center;
     align-items: center;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     border: 3px solid transparent;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transform: translateY(60px);
+    position: relative;
+    z-index: 1;
 }
 
 .card:hover {
-    transform: translateY(-10px);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    transform: translateY(0);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+    z-index: 10;
 }
 
 .card.selected {
     border-color: #667eea;
-    transform: translateY(-15px);
-    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.5);
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.6);
+    z-index: 20;
 }
 
 .card-value {
@@ -413,7 +481,9 @@ body {
 }
 
 .hand-actions {
-    margin-top: 15px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
 }
 
 /* Buttons */
@@ -578,30 +648,55 @@ body {
 
 /* Responsive */
 @media (max-width: 900px) {
-    #gameBoard {
-        width: 100%;
-        height: auto;
+    .board-container {
+        padding: 5px;
+    }
+
+    .moves-log-floating {
+        top: 10px;
+        right: 10px;
+    }
+
+    .moves-log-panel {
+        width: 250px;
     }
 }
 
 @media (max-width: 600px) {
     .card {
-        width: 50px;
-        height: 75px;
+        width: 55px;
+        height: 85px;
+        transform: translateY(50px);
+    }
+
+    .card:hover {
+        transform: translateY(0);
+    }
+
+    .card.selected {
+        transform: translateY(-5px);
     }
 
     .card-value, .card-suit {
-        font-size: 1.1rem;
+        font-size: 1rem;
     }
 
     .hand {
-        gap: 8px;
+        gap: 5px;
     }
 
-    .card-instruction {
-        font-size: 0.95rem;
-        padding: 10px 15px;
-        min-height: 55px;
+    .hand-wrapper {
+        height: 45px;
+    }
+
+    .hand-container {
+        height: 120px;
+    }
+
+    .card-instruction-overlay {
+        font-size: 0.85rem;
+        padding: 8px 15px;
+        max-width: 90%;
     }
 
     /* Larger touch targets for marbles on mobile */
@@ -609,12 +704,18 @@ body {
         r: 20;
     }
 
-    .seat-indicator {
-        font-size: 1.2rem;
-        padding: 10px 20px;
+    .moves-log-toggle {
+        padding: 8px 12px;
+        font-size: 1rem;
     }
 
-    .hand-container {
-        padding: 15px 10px;
+    .moves-log-panel {
+        width: calc(100vw - 40px);
+        right: -10px;
+    }
+
+    .btn {
+        padding: 10px 20px;
+        font-size: 0.9rem;
     }
 }
