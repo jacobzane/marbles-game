@@ -1218,19 +1218,7 @@ function renderBoard() {
         }
         
         svg.appendChild(circle);
-        
-        const numLabel = createSVGElement('text', {
-            x: pos.x,
-            y: pos.y + 4,
-            'text-anchor': 'middle',
-            'font-size': '10',
-            'font-weight': 'bold',
-            fill: '#333',
-            'pointer-events': 'none'
-        });
-        numLabel.textContent = i;
-        svg.appendChild(numLabel);
-        
+
         const marbleData = getMarbleAtTrackPosition(i);
         if (marbleData) {
             const hitArea = createSVGElement('circle', {
@@ -2168,7 +2156,7 @@ function findNearestPosition(svgX, svgY) {
 function calculateDistance(startPos, startType, startPlayer, endPos, endType, endPlayer) {
     // Both positions on track
     if (startType === 'track' && endType === 'track') {
-        if (startPos === endPos) return { forward: 0, backward: 0 };
+        if (startPos === endPos) return 0;
 
         // Calculate forward distance
         let forward = 0;
@@ -2186,13 +2174,14 @@ function calculateDistance(startPos, startType, startPlayer, endPos, endType, en
             current = (current - 1 + 72) % 72;
         }
 
-        return { forward, backward };
+        // Return the shorter distance
+        return Math.min(forward, backward);
     }
 
     // Start on track, end in home
     if (startType === 'track' && endType === 'home') {
         if (!endPlayer) {
-            return { forward: null, backward: null };
+            return null;
         }
 
         const homeEntry = gameState.board[endPlayer].homeEntry;
@@ -2206,33 +2195,31 @@ function calculateDistance(startPos, startType, startPlayer, endPos, endType, en
         }
 
         // Add distance into home (endPos is 0-4, representing home index)
-        const forward = distToHome + endPos + 1;
-
-        return { forward, backward: null };
+        return distToHome + endPos + 1;
     }
 
     // Start in home, end on track (marbles don't move out of home backwards)
     if (startType === 'home' && endType === 'track') {
-        return { forward: null, backward: null };
+        return null;
     }
 
     // Both in home
     if (startType === 'home' && endType === 'home') {
         if (startPlayer !== endPlayer) {
-            return { forward: null, backward: null }; // Different players
+            return null; // Different players
         }
 
-        if (startPos === endPos) return { forward: 0, backward: 0 };
+        if (startPos === endPos) return 0;
 
         // Can only move forward in home
         if (endPos > startPos) {
-            return { forward: endPos - startPos, backward: null };
+            return endPos - startPos;
         } else {
-            return { forward: null, backward: null }; // Can't move backward in home
+            return null; // Can't move backward in home
         }
     }
 
-    return { forward: null, backward: null };
+    return null;
 }
 
 function drawDistanceLine() {
@@ -2311,8 +2298,8 @@ function drawDistanceLine() {
     });
     svg.appendChild(line);
 
-    // Calculate distances
-    const distances = calculateDistance(
+    // Calculate distance
+    const distance = calculateDistance(
         distanceCountState.startPos,
         distanceCountState.startType,
         distanceCountState.startPlayer,
@@ -2325,22 +2312,10 @@ function drawDistanceLine() {
     const midY = (startVisualPos.y + endVisualPos.y) / 2;
 
     // Determine what to display
-    let displayText = '';
-    if (distances.forward === 0 && distances.backward === 0) {
-        displayText = '0';
-    } else if (distances.forward !== null && distances.backward !== null) {
-        // Show both forward and backward
-        displayText = `↑${distances.forward} ↓${distances.backward}`;
-    } else if (distances.forward !== null) {
-        displayText = `${distances.forward}`;
-    } else if (distances.backward !== null) {
-        displayText = `${distances.backward}`;
-    } else {
-        displayText = 'N/A';
-    }
+    const displayText = distance !== null ? distance.toString() : 'N/A';
 
-    // Background for text (adjust width based on content)
-    const bgWidth = displayText.length > 4 ? 80 : 50;
+    // Background for text
+    const bgWidth = 50;
     const textBg = createSVGElement('rect', {
         x: midX - bgWidth / 2,
         y: midY - 18,
