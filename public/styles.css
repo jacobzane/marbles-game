@@ -282,7 +282,7 @@ body {
 /* Hand Container - Fixed at bottom */
 .hand-container {
     position: relative;
-    height: 100px;
+    height: 60px;
     padding: 0 10px 0 10px;
     display: flex;
     flex-direction: column;
@@ -291,7 +291,7 @@ body {
 }
 
 .hand-wrapper {
-    height: 50px;
+    height: 60px;
     overflow: visible;
     display: flex;
     justify-content: center;
@@ -482,11 +482,12 @@ body {
     color: #2c3e50;
 }
 
-.hand-actions {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    padding-bottom: 5px;
+/* Floating Discard Button */
+.discard-button-floating {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 500;
 }
 
 /* Buttons */
@@ -690,11 +691,16 @@ body {
     }
 
     .hand-wrapper {
-        height: 42px;
+        height: 50px;
     }
 
     .hand-container {
-        height: 85px;
+        height: 50px;
+    }
+
+    .discard-button-floating {
+        right: 10px;
+        bottom: 60px;
     }
 
     .card-instruction-overlay {

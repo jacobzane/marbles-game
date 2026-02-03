@@ -1410,23 +1410,32 @@ function renderBoard() {
             }
         }
         
-        const labelX = entryPos.x - entryInward.x * 40;
-        const labelY = entryPos.y - entryInward.y * 40;
-
-        // Display player name (big and prominent)
+        // Display player name at viewport edge for maximum board space
         if (gameState.players[pos]) {
-            // Determine rotation for adjacent players
+            // Determine rotation and position based on relative seat
             const seatIndex = gameState.playerOrder.indexOf(pos);
             const mySeatIndex = gameState.playerOrder.indexOf(myPosition);
             const relativeSeatDiff = (seatIndex - mySeatIndex + 4) % 4;
 
-            let textRotation = 0;
-            // Adjacent players (left/right) should be rotated 90 degrees
-            if (relativeSeatDiff === 1) {
-                // Right player - rotate 90° clockwise
+            let labelX, labelY, textRotation = 0;
+
+            if (relativeSeatDiff === 0) {
+                // Bottom player (me) - position near bottom edge
+                labelX = 400;
+                labelY = 760;
+            } else if (relativeSeatDiff === 2) {
+                // Top player (across) - position near top edge
+                labelX = 400;
+                labelY = 40;
+            } else if (relativeSeatDiff === 1) {
+                // Right player - rotate 90° clockwise, position near right edge
+                labelX = 760;
+                labelY = 400;
                 textRotation = 90;
-            } else if (relativeSeatDiff === 3) {
-                // Left player - rotate 90° counter-clockwise
+            } else {
+                // Left player - rotate 90° counter-clockwise, position near left edge
+                labelX = 40;
+                labelY = 400;
                 textRotation = -90;
             }
 
@@ -1442,63 +1451,6 @@ function renderBoard() {
             });
             nameLabel.textContent = gameState.players[pos].name + (playerFinished ? ' ✓' : '');
             svg.appendChild(nameLabel);
-
-            // Display last played card outside the track near entry space
-            const lastCard = gameState.players[pos].discardPile && gameState.players[pos].discardPile.length > 0
-                ? gameState.players[pos].discardPile[gameState.players[pos].discardPile.length - 1]
-                : null;
-
-            if (lastCard) {
-                const cardX = entryPos.x - entryInward.x * 80;
-                const cardY = entryPos.y - entryInward.y * 80;
-
-                // Card background
-                const cardRect = createSVGElement('rect', {
-                    x: cardX - 15,
-                    y: cardY - 20,
-                    width: 30,
-                    height: 40,
-                    rx: 3,
-                    fill: 'white',
-                    stroke: '#ddd',
-                    'stroke-width': 2
-                });
-                svg.appendChild(cardRect);
-
-                // Card value
-                const isRed = lastCard.suit === 'hearts' || lastCard.suit === 'diamonds' || lastCard.suit === 'red';
-                const cardText = createSVGElement('text', {
-                    x: cardX,
-                    y: cardY - 5,
-                    'text-anchor': 'middle',
-                    'dominant-baseline': 'middle',
-                    fill: isRed ? '#e74c3c' : '#2c3e50',
-                    'font-size': '12',
-                    'font-weight': 'bold'
-                });
-                cardText.textContent = lastCard.value;
-                svg.appendChild(cardText);
-
-                // Card suit
-                const suitSymbols = {
-                    hearts: '♥',
-                    diamonds: '♦',
-                    clubs: '♣',
-                    spades: '♠',
-                    red: '🃏',
-                    black: '🃏'
-                };
-                const cardSuit = createSVGElement('text', {
-                    x: cardX,
-                    y: cardY + 8,
-                    'text-anchor': 'middle',
-                    'dominant-baseline': 'middle',
-                    fill: isRed ? '#e74c3c' : '#2c3e50',
-                    'font-size': '10'
-                });
-                cardSuit.textContent = suitSymbols[lastCard.suit] || '';
-                svg.appendChild(cardSuit);
-            }
         }
     });
 
