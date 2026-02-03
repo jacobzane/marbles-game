@@ -1576,13 +1576,9 @@ function renderHand() {
 }
 
 function renderGameInfo() {
-    const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
-    document.getElementById('currentPlayer').textContent =
-        gameState.players[currentPlayer]?.name || currentPlayer;
-
-    const isMyTurn = currentPlayer === myPosition;
-    document.getElementById('turnIndicator').textContent = isMyTurn ? "It's your turn!" : '';
-    document.getElementById('turnIndicator').className = isMyTurn ? 'your-turn' : '';
+    // These elements were removed when UI was simplified
+    // Keeping function for potential future use
+    return;
 }
 
 function renderMovesLog() {
