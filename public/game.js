@@ -1148,7 +1148,7 @@ function renderBoard() {
     
     const centerX = 400;
     const centerY = 400;
-    const squareSize = 550;
+    const squareSize = 680;
     const marbleRadius = 12;
     
     const rotationOffset = getRotationOffset();
@@ -2067,7 +2067,7 @@ function handleDistanceEnd() {
 function findNearestPosition(svgX, svgY) {
     const centerX = 400;
     const centerY = 400;
-    const squareSize = 550;
+    const squareSize = 680;
     const rotationOffset = getRotationOffset();
 
     let nearest = null;
@@ -2196,7 +2196,7 @@ function drawDistanceLine() {
 
     const centerX = 400;
     const centerY = 400;
-    const squareSize = 550;
+    const squareSize = 680;
     const rotationOffset = getRotationOffset();
 
     // Get visual positions for start and end
