@@ -4,6 +4,8 @@ const http = require('http').createServer(app);
 const io = require('socket.io')(http);
 const path = require('path');
 
+const GAME_PASSWORD = process.env.GAME_PASSWORD || 'Berg270';
+
 app.use(express.static('public'));
 
 // Game state
@@ -20,8 +22,13 @@ let gameState = {
   board: initializeBoard(),
   gameStarted: false,
   // Track partial moves for 7 and 9 cards
-  pendingSplitMove: null
+  pendingSplitMove: null,
+  // Track recent moves for display
+  movesLog: []
 };
+
+// Track disconnected players for reconnection
+let disconnectionTimeouts = {};
 
 function initializeBoard() {
   return {
@@ -309,12 +316,43 @@ function startGame(startingPlayer) {
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
+  socket.on('checkPassword', (data) => {
+    const { password } = data;
+    if (password === GAME_PASSWORD) {
+      socket.emit('passwordCorrect');
+    } else {
+      socket.emit('passwordIncorrect');
+    }
+  });
+
   socket.on('joinGame', (data) => {
     const { playerName, position } = data;
-    
+
+    // Check if this is a reconnection attempt
     if (gameState.players[position]) {
-      socket.emit('joinError', 'Position already taken');
-      return;
+      const existingPlayer = gameState.players[position];
+
+      // Allow reconnection if same player name and they were disconnected
+      if (existingPlayer.name === playerName && existingPlayer.disconnected) {
+        // Clear the disconnection timeout
+        if (disconnectionTimeouts[position]) {
+          clearTimeout(disconnectionTimeouts[position]);
+          delete disconnectionTimeouts[position];
+        }
+
+        // Restore connection
+        existingPlayer.socketId = socket.id;
+        existingPlayer.disconnected = false;
+
+        console.log(`Player ${playerName} reconnected to ${position}`);
+        socket.emit('joinSuccess', { position, gameState });
+        io.emit('playerReconnected', { position, playerName });
+        io.emit('gameStateUpdate', gameState);
+        return;
+      } else {
+        socket.emit('joinError', 'Position already taken');
+        return;
+      }
     }
 
     if (Object.keys(gameState.players).length >= 4) {
@@ -328,7 +366,8 @@ io.on('connection', (socket) => {
       position,
       hand: [],
       marbles: {},
-      discardPile: [] // Per-player discard pile
+      discardPile: [], // Per-player discard pile
+      disconnected: false
     };
 
     for (let i = 0; i < 5; i++) {
@@ -340,7 +379,7 @@ io.on('connection', (socket) => {
     }
 
     gameState.playerOrder.push(position);
-    
+
     socket.emit('joinSuccess', { position, gameState });
     io.emit('gameStateUpdate', gameState);
 
@@ -596,14 +635,36 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
+
     for (let pos in gameState.players) {
       if (gameState.players[pos].socketId === socket.id) {
-        delete gameState.players[pos];
-        gameState.playerOrder = gameState.playerOrder.filter(p => p !== pos);
+        const playerName = gameState.players[pos].name;
+
+        // Mark as disconnected instead of removing
+        gameState.players[pos].disconnected = true;
+
+        console.log(`Player ${playerName} at ${pos} disconnected - waiting for reconnection...`);
+
+        // Notify other players
+        io.emit('playerDisconnected', { position: pos, playerName });
+
+        // Set timeout to remove player if they don't reconnect (30 seconds)
+        disconnectionTimeouts[pos] = setTimeout(() => {
+          if (gameState.players[pos] && gameState.players[pos].disconnected) {
+            console.log(`Player ${playerName} at ${pos} did not reconnect - removing from game`);
+
+            delete gameState.players[pos];
+            gameState.playerOrder = gameState.playerOrder.filter(p => p !== pos);
+            delete disconnectionTimeouts[pos];
+
+            io.emit('playerRemoved', { position: pos, playerName });
+            io.emit('gameStateUpdate', gameState);
+          }
+        }, 30000); // 30 second grace period
+
         break;
       }
     }
-    io.emit('gameStateUpdate', gameState);
   });
 });
 

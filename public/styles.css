@@ -251,6 +251,16 @@ body {
 /* Marble styling - no transform on hover to prevent jitter */
 .marble {
     cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.marble-moving {
+    animation: marblePulse 0.5s ease-in-out;
+}
+
+@keyframes marblePulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.7; filter: brightness(1.5); }
 }
 
 /* Hit area for marbles - larger clickable area */
@@ -281,6 +291,57 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.moves-log {
+    margin-top: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.moves-log-header {
+    background: rgba(102, 126, 234, 0.4);
+    color: #fff;
+    padding: 10px;
+    font-weight: bold;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.moves-log-content {
+    max-height: 150px;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.moves-log-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.moves-log-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.moves-log-content::-webkit-scrollbar-thumb {
+    background: rgba(102, 126, 234, 0.5);
+    border-radius: 3px;
+}
+
+.move-entry {
+    color: #ddd;
+    font-size: 0.85rem;
+    padding: 5px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.move-entry:last-child {
+    border-bottom: none;
+}
+
+.move-entry-player {
+    font-weight: bold;
+    margin-right: 5px;
 }
 
 .hand {
@@ -459,6 +520,66 @@ body {
     color: #fff;
 }
 
+/* Notification System */
+.game-notification {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 15px 30px;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 1rem;
+    z-index: 2000;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    animation: slideDown 0.3s ease-out;
+}
+
+.notification-info {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.notification-success {
+    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    color: white;
+}
+
+.notification-warning {
+    background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+    color: white;
+}
+
+.notification-error {
+    background: linear-gradient(135deg, #F44336 0%, #D32F2F 100%);
+    color: white;
+}
+
+.game-notification.fade-out {
+    animation: fadeOut 0.5s ease-out forwards;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateX(-50%) translateY(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+    }
+}
+
 /* Responsive */
 @media (max-width: 900px) {
     #gameBoard {
@@ -469,16 +590,35 @@ body {
 
 @media (max-width: 600px) {
     .card {
-        width: 55px;
-        height: 80px;
+        width: 50px;
+        height: 75px;
     }
-    
+
     .card-value, .card-suit {
-        font-size: 1.2rem;
+        font-size: 1.1rem;
     }
-    
+
+    .hand {
+        gap: 8px;
+    }
+
+    .card-instruction {
+        font-size: 0.95rem;
+        padding: 10px 15px;
+        min-height: 55px;
+    }
+
+    /* Larger touch targets for marbles on mobile */
+    .marble-hit-area {
+        r: 20;
+    }
+
     .seat-indicator {
         font-size: 1.2rem;
         padding: 10px 20px;
+    }
+
+    .hand-container {
+        padding: 15px 10px;
     }
 }

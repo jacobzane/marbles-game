@@ -11,11 +11,22 @@ let splitMoveState = null;
 // State for home choice on regular cards
 let homeChoiceState = null;
 
+// State for distance counting
+let distanceCountState = {
+    active: false,
+    startPos: null,
+    currentPos: null
+};
+
 // DOM Elements
+const passwordScreen = document.getElementById('passwordScreen');
 const loginScreen = document.getElementById('loginScreen');
 const lobbyScreen = document.getElementById('lobbyScreen');
 const gameScreen = document.getElementById('gameScreen');
 const winScreen = document.getElementById('winScreen');
+const gamePasswordInput = document.getElementById('gamePassword');
+const passwordSubmitBtn = document.getElementById('passwordSubmitBtn');
+const passwordError = document.getElementById('passwordError');
 const playerNameInput = document.getElementById('playerName');
 const positionButtons = document.querySelectorAll('.position-btn');
 const loginError = document.getElementById('loginError');
@@ -31,7 +42,33 @@ const randomizeStartBtn = document.getElementById('randomizeStartBtn');
 const beginGameBtn = document.getElementById('beginGameBtn');
 let selectedStartingPlayer = null;
 
+// Password submission
+passwordSubmitBtn.addEventListener('click', () => {
+    const password = gamePasswordInput.value.trim();
+    if (!password) {
+        passwordError.textContent = 'Please enter a password';
+        return;
+    }
+    socket.emit('checkPassword', { password });
+});
+
+gamePasswordInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        passwordSubmitBtn.click();
+    }
+});
+
 // Socket event listeners
+socket.on('passwordCorrect', () => {
+    localStorage.setItem('gameAuthenticated', 'true');
+    showScreen('loginScreen');
+});
+
+socket.on('passwordIncorrect', () => {
+    passwordError.textContent = 'Incorrect password';
+    gamePasswordInput.value = '';
+});
+
 socket.on('joinSuccess', (data) => {
     myPosition = data.position;
     gameState = data.gameState;
@@ -125,6 +162,21 @@ socket.on('error', (message) => {
     alert(message);
     // Don't clear split state on error - let user try again
     renderGame();
+});
+
+socket.on('playerDisconnected', (data) => {
+    const { position, playerName } = data;
+    showNotification(`${playerName} (${position}) disconnected. Waiting for reconnection...`, 'warning');
+});
+
+socket.on('playerReconnected', (data) => {
+    const { position, playerName } = data;
+    showNotification(`${playerName} (${position}) reconnected!`, 'success');
+});
+
+socket.on('playerRemoved', (data) => {
+    const { position, playerName } = data;
+    showNotification(`${playerName} (${position}) did not reconnect and was removed from the game.`, 'error');
 });
 
 // Position selection
@@ -1453,8 +1505,8 @@ function renderBoard() {
         width: 80,
         height: 100,
         rx: 8,
-        fill: '#2c3e50',
-        stroke: '#34495e',
+        fill: '#c0392b',
+        stroke: '#922b21',
         'stroke-width': 3
     });
     svg.appendChild(deckRect);
@@ -1467,7 +1519,7 @@ function renderBoard() {
         height: 80,
         rx: 5,
         fill: 'none',
-        stroke: '#e74c3c',
+        stroke: '#ecf0f1',
         'stroke-width': 2
     });
     svg.appendChild(pattern1);
@@ -1479,7 +1531,7 @@ function renderBoard() {
         height: 60,
         rx: 3,
         fill: 'none',
-        stroke: '#e74c3c',
+        stroke: '#ecf0f1',
         'stroke-width': 2
     });
     svg.appendChild(pattern2);
@@ -1489,12 +1541,17 @@ function renderBoard() {
         x: centerX,
         y: centerY + 70,
         'text-anchor': 'middle',
-        'font-size': '16',
+        'font-size': '18',
         'font-weight': 'bold',
-        fill: '#2c3e50'
+        fill: '#ffffff',
+        stroke: '#000000',
+        'stroke-width': '1'
     });
     deckCountText.textContent = `${deckCount} cards`;
     svg.appendChild(deckCountText);
+
+    // Draw distance counting line if active
+    drawDistanceLine();
 }
 
 function renderHand() {
@@ -1935,4 +1992,195 @@ function getCardValue(card) {
     if (card.value === 'A') return 1;
     if (card.value === 'J' || card.value === 'Q' || card.value === 'K') return 'face';
     return parseInt(card.value);
+}
+
+// Distance Counter Functions
+function initializeDistanceCounter() {
+    const svg = gameBoard;
+
+    svg.addEventListener('mousedown', handleDistanceStart);
+    svg.addEventListener('mousemove', handleDistanceMove);
+    svg.addEventListener('mouseup', handleDistanceEnd);
+    svg.addEventListener('mouseleave', handleDistanceEnd);
+
+    // Touch support
+    svg.addEventListener('touchstart', (e) => {
+        const touch = e.touches[0];
+        handleDistanceStart({ clientX: touch.clientX, clientY: touch.clientY, target: e.target });
+    });
+    svg.addEventListener('touchmove', (e) => {
+        const touch = e.touches[0];
+        handleDistanceMove({ clientX: touch.clientX, clientY: touch.clientY });
+        e.preventDefault();
+    });
+    svg.addEventListener('touchend', handleDistanceEnd);
+}
+
+function handleDistanceStart(e) {
+    const trackPos = e.target.getAttribute('data-track-position');
+    if (trackPos !== null) {
+        distanceCountState.active = true;
+        distanceCountState.startPos = parseInt(trackPos);
+        distanceCountState.currentPos = distanceCountState.startPos;
+    }
+}
+
+function handleDistanceMove(e) {
+    if (!distanceCountState.active) return;
+
+    const svg = gameBoard;
+    const rect = svg.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Convert to SVG coordinates
+    const svgX = (x / rect.width) * 800;
+    const svgY = (y / rect.height) * 800;
+
+    // Find nearest track position
+    const nearestPos = findNearestTrackPosition(svgX, svgY);
+    if (nearestPos !== null && nearestPos !== distanceCountState.currentPos) {
+        distanceCountState.currentPos = nearestPos;
+        renderBoard(); // Re-render to show distance line
+    }
+}
+
+function handleDistanceEnd() {
+    if (distanceCountState.active) {
+        distanceCountState.active = false;
+        distanceCountState.startPos = null;
+        distanceCountState.currentPos = null;
+        renderBoard(); // Clear the distance line
+    }
+}
+
+function findNearestTrackPosition(svgX, svgY) {
+    const centerX = 400;
+    const centerY = 400;
+    const squareSize = 550;
+    const rotationOffset = getRotationOffset();
+
+    let nearest = null;
+    let minDist = Infinity;
+
+    for (let i = 0; i < 72; i++) {
+        const pos = getSquarePosition(i, centerX, centerY, squareSize, rotationOffset);
+        const dist = Math.sqrt((pos.x - svgX) ** 2 + (pos.y - svgY) ** 2);
+        if (dist < minDist && dist < 30) { // Within 30 units
+            minDist = dist;
+            nearest = i;
+        }
+    }
+
+    return nearest;
+}
+
+function calculateTrackDistance(start, end) {
+    if (start === end) return 0;
+
+    // Calculate forward distance
+    let forward = 0;
+    let current = start;
+    while (current !== end && forward < 72) {
+        forward++;
+        current = (current + 1) % 72;
+    }
+
+    return forward;
+}
+
+function drawDistanceLine() {
+    if (!distanceCountState.active || distanceCountState.startPos === null || distanceCountState.currentPos === null) {
+        return;
+    }
+
+    const centerX = 400;
+    const centerY = 400;
+    const squareSize = 550;
+    const rotationOffset = getRotationOffset();
+
+    const startPos = getSquarePosition(distanceCountState.startPos, centerX, centerY, squareSize, rotationOffset);
+    const endPos = getSquarePosition(distanceCountState.currentPos, centerX, centerY, squareSize, rotationOffset);
+
+    const svg = gameBoard;
+
+    // Draw line
+    const line = createSVGElement('line', {
+        x1: startPos.x,
+        y1: startPos.y,
+        x2: endPos.x,
+        y2: endPos.y,
+        stroke: '#FFD700',
+        'stroke-width': 3,
+        'stroke-dasharray': '5,5',
+        'pointer-events': 'none'
+    });
+    svg.appendChild(line);
+
+    // Calculate and display distance
+    const distance = calculateTrackDistance(distanceCountState.startPos, distanceCountState.currentPos);
+    const midX = (startPos.x + endPos.x) / 2;
+    const midY = (startPos.y + endPos.y) / 2;
+
+    // Background for text
+    const textBg = createSVGElement('rect', {
+        x: midX - 25,
+        y: midY - 18,
+        width: 50,
+        height: 36,
+        rx: 5,
+        fill: '#FFD700',
+        stroke: '#000',
+        'stroke-width': 2,
+        'pointer-events': 'none'
+    });
+    svg.appendChild(textBg);
+
+    // Distance text
+    const text = createSVGElement('text', {
+        x: midX,
+        y: midY + 6,
+        'text-anchor': 'middle',
+        'dominant-baseline': 'middle',
+        fill: '#000',
+        'font-size': '20',
+        'font-weight': 'bold',
+        'pointer-events': 'none'
+    });
+    text.textContent = distance;
+    svg.appendChild(text);
+}
+
+// Initialize distance counter when page loads
+setTimeout(() => {
+    if (gameBoard) {
+        initializeDistanceCounter();
+    }
+}, 100);
+
+// Check if already authenticated on page load
+window.addEventListener('load', () => {
+    if (localStorage.getItem('gameAuthenticated') === 'true') {
+        showScreen('loginScreen');
+    }
+});
+
+// Notification System
+function showNotification(message, type = 'info') {
+    // Remove existing notification if any
+    const existing = document.querySelector('.game-notification');
+    if (existing) {
+        existing.remove();
+    }
+
+    const notification = document.createElement('div');
+    notification.className = `game-notification notification-${type}`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        notification.classList.add('fade-out');
+        setTimeout(() => notification.remove(), 500);
+    }, 5000);
 }
