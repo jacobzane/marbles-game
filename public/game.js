@@ -1586,23 +1586,17 @@ function onCardClick(cardIndex) {
     
     const card = gameState.players[myPosition].hand[cardIndex];
     const cardValue = getCardValue(card);
-    
-    // Check if 9 card can be played (need 2 marbles, 1 must be on track)
-    if (cardValue === 9 && !canPlay9Card()) {
-        alert("Cannot play 9: Need at least 2 moveable marbles (1 must be on track for backward move)");
-        return;
-    }
-    
+
     selectedCard = cardIndex;
     splitMoveState = null;
     homeChoiceState = null;
     renderHand();
-    
+
     const instructionEl = document.getElementById('cardInstruction');
-    
+
     const canMoveTeammate = isPlayerFinished(myPosition);
     const extra = canMoveTeammate ? " (can move teammate's marbles)" : "";
-    
+
     if (cardValue === 'face') {
         instructionEl.textContent = `${card.value}: Click a marble in START to enter, or on TRACK to move 10 spaces${extra}`;
     } else if (cardValue === 1) {
@@ -1614,7 +1608,12 @@ function onCardClick(cardIndex) {
     } else if (cardValue === 8) {
         instructionEl.textContent = `8: Click a marble to move it BACKWARDS 8 spaces${extra}`;
     } else if (cardValue === 9) {
-        instructionEl.textContent = `9: Click first marble to move FORWARD (1-8), then a DIFFERENT marble moves BACKWARD${extra}`;
+        // Check if 9 card can be played
+        if (!canPlay9Card()) {
+            instructionEl.textContent = `9: Cannot play - need at least 2 moveable marbles (1 must be on track). Discard to continue.`;
+        } else {
+            instructionEl.textContent = `9: Click first marble to move FORWARD (1-8), then a DIFFERENT marble moves BACKWARD${extra}`;
+        }
     } else {
         instructionEl.textContent = `${card.value}: Click a marble to move it ${cardValue} spaces forward${extra}`;
     }
@@ -1631,9 +1630,24 @@ function onMarbleClick(marbleOwner, marbleId) {
     const isMyTurn = gameState.playerOrder[gameState.currentPlayerIndex] === myPosition;
     if (!isMyTurn) return;
 
-    // If awaiting destination selection for 7/9 card, ignore marble clicks
-    // User should click on a space (track or home position), not a marble
+    // If awaiting destination selection for 7/9 card, check if marble is at a valid destination
+    // If so, treat it as clicking that destination space
     if (splitMoveState && splitMoveState.awaitingDestination) {
+        const marble = gameState.players[marbleOwner].marbles[marbleId];
+        if (marble.location === 'track') {
+            // Check if this track position is a valid destination
+            const validDestinations = getValidDestinations(
+                splitMoveState.firstMarbleOwner,
+                splitMoveState.firstMarbleId,
+                splitMoveState.cardType === 7 ? 7 : 8
+            );
+            const destData = validDestinations.find(d => d.type === 'track' && d.position === marble.position);
+            if (destData) {
+                onDestinationClick(destData);
+                return;
+            }
+        }
+        // If not a valid destination, ignore the click
         return;
     }
 
