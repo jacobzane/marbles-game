@@ -1627,15 +1627,21 @@ function onMarbleClick(marbleOwner, marbleId) {
         alert('Select a card first!');
         return;
     }
-    
+
     const isMyTurn = gameState.playerOrder[gameState.currentPlayerIndex] === myPosition;
     if (!isMyTurn) return;
-    
+
+    // If awaiting destination selection for 7/9 card, ignore marble clicks
+    // User should click on a space (track or home position), not a marble
+    if (splitMoveState && splitMoveState.awaitingDestination) {
+        return;
+    }
+
     if (splitMoveState && splitMoveState.awaitingSecondMarble) {
         handleSplitSecondMarble(marbleOwner, marbleId);
         return;
     }
-    
+
     const card = gameState.players[myPosition].hand[selectedCard];
     const cardValue = getCardValue(card);
     
