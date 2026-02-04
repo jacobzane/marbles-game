@@ -1031,11 +1031,22 @@ function placeJoker(actingPlayer, marbleOwner, moveData) {
 function handleLanding(landingPlayer, targetPlayer, targetMarbleId) {
   const targetMarble = gameState.players[targetPlayer].marbles[targetMarbleId];
   const teammate = getTeammate(landingPlayer);
-  
+
   if (targetPlayer === teammate) {
+    // Send teammate to home entry
     const homeEntry = gameState.board[targetPlayer].homeEntry;
+
+    // Check if there's already a marble at the home entry (for chain reactions)
+    const occupant = getMarbleOnTrack(homeEntry);
+
     targetMarble.position = homeEntry;
+
+    // If there's an occupant at the home entry, trigger chain reaction
+    if (occupant) {
+      handleLanding(targetPlayer, occupant.player, occupant.marbleId);
+    }
   } else {
+    // Send enemy back to start
     const startIndex = parseInt(targetMarbleId.replace('marble', ''));
     targetMarble.location = 'start';
     targetMarble.position = startIndex;
