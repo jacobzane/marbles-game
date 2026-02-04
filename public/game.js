@@ -1422,19 +1422,19 @@ function renderBoard() {
             if (relativeSeatDiff === 0) {
                 // Bottom player (me) - position near bottom edge
                 labelX = 400;
-                labelY = 760;
+                labelY = 785;
             } else if (relativeSeatDiff === 2) {
                 // Top player (across) - position near top edge
                 labelX = 400;
-                labelY = 40;
+                labelY = 15;
             } else if (relativeSeatDiff === 1) {
                 // Right player - rotate 90° clockwise, position near right edge
-                labelX = 760;
+                labelX = 785;
                 labelY = 400;
                 textRotation = 90;
             } else {
                 // Left player - rotate 90° counter-clockwise, position near left edge
-                labelX = 40;
+                labelX = 15;
                 labelY = 400;
                 textRotation = -90;
             }

@@ -282,7 +282,7 @@ body {
 /* Hand Container - Fixed at bottom */
 .hand-container {
     position: relative;
-    height: 55px;
+    height: 100px;
     padding: 0 10px 0 10px;
     display: flex;
     flex-direction: column;
@@ -291,7 +291,7 @@ body {
 }
 
 .hand-wrapper {
-    height: 55px;
+    height: 100px;
     overflow: visible;
     display: flex;
     justify-content: center;
@@ -691,11 +691,11 @@ body {
     }
 
     .hand-wrapper {
-        height: 45px;
+        height: 85px;
     }
 
     .hand-container {
-        height: 45px;
+        height: 85px;
     }
 
     .discard-button-floating {
