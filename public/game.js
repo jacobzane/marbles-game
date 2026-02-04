@@ -1428,15 +1428,15 @@ function renderBoard() {
                 labelX = 400;
                 labelY = 15;
             } else if (relativeSeatDiff === 1) {
-                // Right player - rotate 90° clockwise, position near right edge
-                labelX = 785;
-                labelY = 400;
-                textRotation = 90;
-            } else {
                 // Left player - rotate 90° counter-clockwise, position near left edge
                 labelX = 15;
                 labelY = 400;
                 textRotation = -90;
+            } else {
+                // Right player - rotate 90° clockwise, position near right edge
+                labelX = 785;
+                labelY = 400;
+                textRotation = 90;
             }
 
             const nameLabel = createSVGElement('text', {
