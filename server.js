@@ -444,7 +444,11 @@ io.on('connection', (socket) => {
     const { position, cardIndex, cardType, moveData } = data;
 
     const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+    console.log(`[partialMove] Attempt by ${position}, currentPlayer is ${currentPlayer}, cardType ${cardType}`);
+
     if (position !== currentPlayer) {
+      console.log(`[partialMove] REJECTED - Not your turn. ${position} tried but it's ${currentPlayer}'s turn`);
+      logTurnState('partialMove-rejected');
       socket.emit('error', 'Not your turn');
       return;
     }
@@ -530,14 +534,19 @@ io.on('connection', (socket) => {
   // Handle completing a split move (second part of 7/9)
   socket.on('completeSplitMove', (data) => {
     const { position, moveData } = data;
-    
+
     const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+    console.log(`[completeSplitMove] Attempt by ${position}, currentPlayer is ${currentPlayer}`);
+
     if (position !== currentPlayer) {
+      console.log(`[completeSplitMove] REJECTED - Not your turn. ${position} tried but it's ${currentPlayer}'s turn`);
+      logTurnState('completeSplitMove-rejected');
       socket.emit('error', 'Not your turn');
       return;
     }
 
     if (!gameState.pendingSplitMove || gameState.pendingSplitMove.player !== position) {
+      console.log(`[completeSplitMove] REJECTED - No pending split move for ${position}`);
       socket.emit('error', 'No pending split move');
       return;
     }
@@ -595,9 +604,13 @@ io.on('connection', (socket) => {
 
   socket.on('playCard', (data) => {
     const { position, cardIndex, moveData } = data;
-    
+
     const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+    console.log(`[playCard] Attempt by ${position}, currentPlayer is ${currentPlayer}, index ${gameState.currentPlayerIndex}`);
+
     if (position !== currentPlayer) {
+      console.log(`[playCard] REJECTED - Not your turn. ${position} tried to play but it's ${currentPlayer}'s turn`);
+      logTurnState('playCard-rejected');
       socket.emit('error', 'Not your turn');
       return;
     }
@@ -612,6 +625,7 @@ io.on('connection', (socket) => {
     }
 
     const card = player.hand[cardIndex];
+    console.log(`[playCard] ${position} playing ${card.value} of ${card.suit}`);
     const result = processCardPlay(position, card, moveData);
 
     if (result.success) {
@@ -623,9 +637,9 @@ io.on('connection', (socket) => {
       if (checkWinCondition(position)) {
         const team = getTeam(position);
         const teammate = getTeammate(position);
-        
+
         if (checkWinCondition(teammate)) {
-          io.emit('gameWon', { 
+          io.emit('gameWon', {
             winner: `${position} and ${teammate}`,
             team: team
           });
@@ -634,6 +648,7 @@ io.on('connection', (socket) => {
       }
 
       nextTurn();
+      logTurnState('playCard-afterTurn');
       io.emit('gameStateUpdate', gameState);
     } else {
       socket.emit('error', result.message);
@@ -642,9 +657,13 @@ io.on('connection', (socket) => {
 
   socket.on('discardCard', (data) => {
     const { position, cardIndex } = data;
-    
+
     const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+    console.log(`[discardCard] Attempt by ${position}, currentPlayer is ${currentPlayer}`);
+
     if (position !== currentPlayer) {
+      console.log(`[discardCard] REJECTED - Not your turn. ${position} tried but it's ${currentPlayer}'s turn`);
+      logTurnState('discardCard-rejected');
       socket.emit('error', 'Not your turn');
       return;
     }
@@ -656,13 +675,15 @@ io.on('connection', (socket) => {
     }
 
     const card = player.hand.splice(cardIndex, 1)[0];
+    console.log(`[discardCard] ${position} discarding ${card.value} of ${card.suit}`);
     player.discardPile.push(card);
     addMoveToLog(position, card);
     dealCards(position, 1);
 
     gameState.pendingSplitMove = null;
-    
+
     nextTurn();
+    logTurnState('discardCard-afterTurn');
     io.emit('gameStateUpdate', gameState);
   });
 
@@ -1067,7 +1088,17 @@ function getTeam(player) {
 function nextTurn() {
   // Clear any pending split move when turn changes
   gameState.pendingSplitMove = null;
+  const previousIndex = gameState.currentPlayerIndex;
+  const previousPlayer = gameState.playerOrder[previousIndex];
   gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % 4;
+  const newPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+  console.log(`[TURN] Turn changed: ${previousPlayer} (index ${previousIndex}) -> ${newPlayer} (index ${gameState.currentPlayerIndex})`);
+}
+
+function logTurnState(context) {
+  const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+  const currentPlayerName = gameState.players[currentPlayer]?.name || 'Unknown';
+  console.log(`[DEBUG ${context}] Current turn: ${currentPlayer} (${currentPlayerName}), index: ${gameState.currentPlayerIndex}, playerOrder: ${gameState.playerOrder.join(', ')}`);
 }
 
 const PORT = process.env.PORT || 3000;

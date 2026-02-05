@@ -412,6 +412,47 @@ body {
     margin-right: 5px;
 }
 
+/* Debug Panel */
+.debug-panel {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    z-index: 500;
+    background: rgba(26, 26, 46, 0.95);
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 0.75rem;
+    color: #fff;
+    max-width: 300px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.debug-header {
+    font-weight: bold;
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.debug-content {
+    font-family: monospace;
+    line-height: 1.4;
+}
+
+.debug-content div {
+    margin: 3px 0;
+}
+
+.debug-my-turn {
+    color: #4ade80;
+    font-weight: bold;
+}
+
+.debug-not-my-turn {
+    color: #f87171;
+}
+
 .card {
     width: 70px;
     height: 100px;

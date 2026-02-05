@@ -120,10 +120,17 @@ socket.on('gameStarted', (state) => {
 });
 
 socket.on('gameStateUpdate', (state) => {
+    const previousIndex = gameState ? gameState.currentPlayerIndex : null;
     const previousPlayer = gameState ? gameState.playerOrder[gameState.currentPlayerIndex] : null;
     gameState = state;
-    console.log('Game state updated. movesLog:', gameState.movesLog);
     const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+    const isMyTurn = currentPlayer === myPosition;
+
+    console.log(`[CLIENT gameStateUpdate] Turn: ${currentPlayer} (index ${gameState.currentPlayerIndex}), myPosition: ${myPosition}, isMyTurn: ${isMyTurn}`);
+
+    if (previousPlayer !== currentPlayer) {
+        console.log(`[CLIENT] Turn changed: ${previousPlayer} (index ${previousIndex}) -> ${currentPlayer} (index ${gameState.currentPlayerIndex})`);
+    }
 
     // If turn changed, clear all local state
     if (previousPlayer !== currentPlayer) {
@@ -336,6 +343,31 @@ function renderGame() {
     renderHand();
     renderGameInfo();
     renderMovesLog();
+    renderDebugPanel();
+}
+
+function renderDebugPanel() {
+    const debugContent = document.getElementById('debugContent');
+    if (!debugContent || !gameState) return;
+
+    const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+    const currentPlayerName = gameState.players[currentPlayer]?.name || currentPlayer;
+    const isMyTurn = currentPlayer === myPosition;
+    const myName = gameState.players[myPosition]?.name || myPosition;
+
+    const turnClass = isMyTurn ? 'debug-my-turn' : 'debug-not-my-turn';
+
+    debugContent.innerHTML = `
+        <div>My Position: <strong>${myPosition}</strong> (${myName})</div>
+        <div>Current Turn: <strong>${currentPlayer}</strong> (${currentPlayerName})</div>
+        <div>Turn Index: <strong>${gameState.currentPlayerIndex}</strong></div>
+        <div class="${turnClass}">Is My Turn: <strong>${isMyTurn ? 'YES' : 'NO'}</strong></div>
+        <div>Order: ${gameState.playerOrder.join(' → ')}</div>
+        <div>Split State: ${splitMoveState ? JSON.stringify({
+            awaiting: splitMoveState.awaitingDestination ? 'dest' : (splitMoveState.awaitingSecondMarble ? '2nd marble' : 'none'),
+            cardType: splitMoveState.cardType
+        }) : 'null'}</div>
+    `;
 }
 
 function isPlayerFinished(player) {
@@ -1573,12 +1605,17 @@ function renderMovesLog() {
 }
 
 function onCardClick(cardIndex) {
-    const isMyTurn = gameState.playerOrder[gameState.currentPlayerIndex] === myPosition;
+    const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+    const isMyTurn = currentPlayer === myPosition;
+
+    console.log(`[CLIENT onCardClick] myPosition: ${myPosition}, currentPlayer: ${currentPlayer}, index: ${gameState.currentPlayerIndex}, isMyTurn: ${isMyTurn}`);
+
     if (!isMyTurn) {
+        console.log(`[CLIENT onCardClick] REJECTED - Not my turn. I am ${myPosition}, but current is ${currentPlayer}`);
         alert("It's not your turn!");
         return;
     }
-    
+
     if (splitMoveState && splitMoveState.awaitingSecondMarble) {
         alert("Complete your current move first!");
         return;
