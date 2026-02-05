@@ -173,6 +173,25 @@ function getTeammate(player) {
   }
 }
 
+// Check if landing on a teammate is valid (their home entry must not be occupied by their own marble)
+function canLandOnTeammate(teammate) {
+  const homeEntry = gameState.board[teammate].homeEntry;
+  const occupant = getMarbleOnTrack(homeEntry);
+
+  // If no one is at home entry, landing is allowed
+  if (!occupant) {
+    return true;
+  }
+
+  // If home entry is occupied by teammate's own marble, landing is NOT allowed
+  if (occupant.player === teammate) {
+    return false;
+  }
+
+  // If home entry is occupied by someone else (enemy), chain reaction will handle it
+  return true;
+}
+
 function isPlayerFinished(player) {
   let inHome = 0;
   for (let marbleId in gameState.players[player].marbles) {
@@ -794,27 +813,33 @@ function processCardPlay(actingPlayer, card, moveData) {
 function enterBoard(player, moveData) {
   const { marbleId } = moveData;
   const marble = gameState.players[player].marbles[marbleId];
-  
+
   if (marble.location !== 'start') {
     return { success: false, message: 'Marble not in start area' };
   }
-  
+
   const entryPosition = gameState.board[player].trackEntry;
-  
+
   const occupant = getMarbleOnTrack(entryPosition);
   if (occupant && occupant.player === player) {
     return { success: false, message: 'Cannot land on your own marble' };
   }
-  
+
+  // Check if landing on teammate is valid (their home entry must be available)
+  const teammate = getTeammate(player);
+  if (occupant && occupant.player === teammate && !canLandOnTeammate(teammate)) {
+    return { success: false, message: 'Cannot land on teammate - their home entry is blocked by their own marble' };
+  }
+
   gameState.board[player].start[marble.position].marble = null;
-  
+
   marble.location = 'track';
   marble.position = entryPosition;
-  
+
   if (occupant) {
     handleLanding(player, occupant.player, occupant.marbleId);
   }
-  
+
   return { success: true };
 }
 
@@ -889,8 +914,13 @@ function moveForward(player, moveData, spaces) {
       if (!canPassHome) {
         return { success: false, message: 'Cannot pass home' };
       }
-      marble.position = trackDestination;
       const occupant = getMarbleOnTrack(trackDestination);
+      // Check if landing on teammate is valid
+      const teammate = getTeammate(player);
+      if (occupant && occupant.player === teammate && !canLandOnTeammate(teammate)) {
+        return { success: false, message: 'Cannot land on teammate - their home entry is blocked by their own marble' };
+      }
+      marble.position = trackDestination;
       if (occupant && occupant.player !== player) {
         handleLanding(player, occupant.player, occupant.marbleId);
       }
@@ -904,8 +934,13 @@ function moveForward(player, moveData, spaces) {
       gameState.board[player].home[homeIndex].marble = player;
       return { success: true };
     } else if (!canEnterHome && canPassHome) {
-      marble.position = trackDestination;
       const occupant = getMarbleOnTrack(trackDestination);
+      // Check if landing on teammate is valid
+      const teammate = getTeammate(player);
+      if (occupant && occupant.player === teammate && !canLandOnTeammate(teammate)) {
+        return { success: false, message: 'Cannot land on teammate - their home entry is blocked by their own marble' };
+      }
+      marble.position = trackDestination;
       if (occupant && occupant.player !== player) {
         handleLanding(player, occupant.player, occupant.marbleId);
       }
@@ -922,18 +957,24 @@ function moveForward(player, moveData, spaces) {
   }
   
   const newPosition = (startPos + spaces) % 72;
-  
+
   if (isPathBlocked(player, startPos, newPosition, 'forward')) {
     return { success: false, message: 'Path blocked by your own marble' };
   }
-  
+
   const occupant = getMarbleOnTrack(newPosition);
   if (occupant && occupant.player === player) {
     return { success: false, message: 'Cannot land on your own marble' };
   }
-  
+
+  // Check if landing on teammate is valid (their home entry must be available)
+  const teammate = getTeammate(player);
+  if (occupant && occupant.player === teammate && !canLandOnTeammate(teammate)) {
+    return { success: false, message: 'Cannot land on teammate - their home entry is blocked by their own marble' };
+  }
+
   marble.position = newPosition;
-  
+
   if (occupant) {
     handleLanding(player, occupant.player, occupant.marbleId);
   }
@@ -944,29 +985,35 @@ function moveForward(player, moveData, spaces) {
 function moveBackwards(player, moveData, spaces) {
   const { marbleId } = moveData;
   const marble = gameState.players[player].marbles[marbleId];
-  
+
   if (marble.location !== 'track') {
     return { success: false, message: 'Marble not on track' };
   }
-  
+
   let newPosition = marble.position - spaces;
   if (newPosition < 0) newPosition += 72;
-  
+
   if (isPathBlocked(player, marble.position, newPosition, 'backward')) {
     return { success: false, message: 'Path blocked by your own marble' };
   }
-  
+
   const occupant = getMarbleOnTrack(newPosition);
   if (occupant && occupant.player === player) {
     return { success: false, message: 'Cannot land on your own marble' };
   }
-  
+
+  // Check if landing on teammate is valid (their home entry must be available)
+  const teammate = getTeammate(player);
+  if (occupant && occupant.player === teammate && !canLandOnTeammate(teammate)) {
+    return { success: false, message: 'Cannot land on teammate - their home entry is blocked by their own marble' };
+  }
+
   marble.position = newPosition;
-  
+
   if (occupant) {
     handleLanding(player, occupant.player, occupant.marbleId);
   }
-  
+
   return { success: true };
 }
 
@@ -1067,17 +1114,23 @@ function placeJoker(actingPlayer, marbleOwner, moveData) {
   if (marbleOwner === targetPlayer) {
     return { success: false, message: 'Cannot joker onto your own marble' };
   }
-  
+
+  // Check if landing on teammate is valid (their home entry must be available)
+  const teammate = getTeammate(marbleOwner);
+  if (targetPlayer === teammate && !canLandOnTeammate(teammate)) {
+    return { success: false, message: 'Cannot land on teammate - their home entry is blocked by their own marble' };
+  }
+
   if (sourceMarble.location === 'start') {
     gameState.board[marbleOwner].start[sourceMarble.position].marble = null;
   }
-  
+
   const targetPosition = targetMarble.position;
   sourceMarble.location = 'track';
   sourceMarble.position = targetPosition;
-  
+
   handleLanding(marbleOwner, targetPlayer, targetMarbleId);
-  
+
   return { success: true };
 }
 
