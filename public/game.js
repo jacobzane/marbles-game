@@ -25,6 +25,7 @@ let distanceCountState = {
 // DOM Elements
 const passwordScreen = document.getElementById('passwordScreen');
 const loginScreen = document.getElementById('loginScreen');
+const waitingScreen = document.getElementById('waitingScreen');
 const lobbyScreen = document.getElementById('lobbyScreen');
 const gameScreen = document.getElementById('gameScreen');
 const winScreen = document.getElementById('winScreen');
@@ -87,8 +88,8 @@ socket.on('passwordIncorrect', () => {
 socket.on('joinSuccess', (data) => {
     myPosition = data.position;
     gameState = data.gameState;
-    showScreen('gameScreen');
-    updateSeatIndicator();
+    showScreen('waitingScreen');
+    updateWaitingRoom();
 });
 
 socket.on('joinError', (message) => {
@@ -99,6 +100,11 @@ socket.on('lobbyReady', (state) => {
     gameState = state;
     showScreen('lobbyScreen');
     updateLobbyDisplay();
+});
+
+socket.on('waitingRoomUpdate', (state) => {
+    gameState = state;
+    updateWaitingRoom();
 });
 
 socket.on('startingPlayerSelected', (data) => {
@@ -285,6 +291,43 @@ function updateLobbyDisplay() {
     } else {
         lobbyControls.style.display = 'none';
         lobbyWaiting.style.display = 'block';
+    }
+}
+
+function updateWaitingRoom() {
+    if (!gameState) return;
+
+    let playerCount = 0;
+    const playerColors = {
+        Seat1: '#2196F3',
+        Seat2: '#F44336',
+        Seat3: '#9C27B0',
+        Seat4: '#FF9800'
+    };
+
+    // Update player names in waiting room
+    for (let i = 1; i <= 4; i++) {
+        const position = `Seat${i}`;
+        const playerEl = document.getElementById(`waitingPlayer${i}`);
+        if (playerEl) {
+            const playerName = gameState.players[position]?.name;
+            if (playerName) {
+                playerEl.textContent = playerName;
+                playerEl.style.color = playerColors[position];
+                playerEl.style.fontWeight = 'bold';
+                playerCount++;
+            } else {
+                playerEl.textContent = 'Empty';
+                playerEl.style.color = '#888';
+                playerEl.style.fontWeight = 'normal';
+            }
+        }
+    }
+
+    // Update status text
+    const statusEl = document.getElementById('waitingStatus');
+    if (statusEl) {
+        statusEl.textContent = `${playerCount} of 4 players joined`;
     }
 }
 
@@ -2022,7 +2065,7 @@ function getPlayerColor(position) {
     const colors = {
         Seat1: '#2196F3',
         Seat2: '#F44336',
-        Seat3: '#4CAF50',
+        Seat3: '#9C27B0',
         Seat4: '#FF9800'
     };
     return colors[position] || '#999';

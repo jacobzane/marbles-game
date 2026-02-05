@@ -462,6 +462,7 @@ io.on('connection', (socket) => {
 
     socket.emit('joinSuccess', { position, gameState });
     io.emit('gameStateUpdate', gameState);
+    io.emit('waitingRoomUpdate', gameState);
 
     if (Object.keys(gameState.players).length === 4) {
       enterLobby();
