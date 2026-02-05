@@ -22,6 +22,11 @@ let distanceCountState = {
     currentPlayer: null
 };
 
+// Animation state
+let isAnimating = false;
+let animationQueue = [];
+let previousMarblePositions = null; // To track position changes
+
 // DOM Elements
 const passwordScreen = document.getElementById('passwordScreen');
 const loginScreen = document.getElementById('loginScreen');
@@ -128,6 +133,10 @@ socket.on('gameStarted', (state) => {
 socket.on('gameStateUpdate', (state) => {
     const previousIndex = gameState ? gameState.currentPlayerIndex : null;
     const previousPlayer = gameState ? gameState.playerOrder[gameState.currentPlayerIndex] : null;
+
+    // Capture old marble positions before updating state
+    const oldPositions = captureMarblePositions();
+
     gameState = state;
     const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
     const isMyTurn = currentPlayer === myPosition;
@@ -150,7 +159,25 @@ socket.on('gameStateUpdate', (state) => {
         }
     }
 
-    renderGame();
+    // Detect marble position changes for animation
+    const newPositions = captureMarblePositions();
+    const changes = detectMarbleChanges(oldPositions, newPositions);
+
+    if (changes.length > 0 && !isAnimating) {
+        // Hide marbles that are moving (they'll be animated)
+        renderBoardWithHiddenMarbles(changes);
+        renderHand();
+        renderGameInfo();
+        renderMovesLog();
+        renderDebugPanel();
+
+        // Play animations, then re-render normally
+        playAnimations(changes, () => {
+            // Animation complete, normal render happens in playAnimations
+        });
+    } else {
+        renderGame();
+    }
 });
 
 socket.on('partialMoveSuccess', (data) => {
@@ -225,6 +252,9 @@ positionButtons.forEach(btn => {
 
 // Discard button
 discardBtn.addEventListener('click', () => {
+    // Block interactions during animations
+    if (isAnimating) return;
+
     if (selectedCard !== null) {
         socket.emit('discardCard', { position: myPosition, cardIndex: selectedCard });
         selectedCard = null;
@@ -1213,6 +1243,404 @@ function getHomeChoiceOptions(marbleOwner, marbleId, spaces) {
     };
 }
 
+// ============ ANIMATION HELPERS ============
+
+// Animation timing constants (in milliseconds)
+const ANIMATION_STEP_DURATION = 80; // Time per track position
+const ANIMATION_DIRECT_DURATION = 400; // Time for direct line animations
+
+// Get visual position for a marble based on its location type
+function getMarbleVisualPosition(location, position, owner) {
+    const centerX = 400;
+    const centerY = 400;
+    const squareSize = 680;
+    const rotationOffset = getRotationOffset();
+
+    if (location === 'track') {
+        return getSquarePosition(position, centerX, centerY, squareSize, rotationOffset);
+    } else if (location === 'start') {
+        // Start positions are in a cross pattern
+        const trackEntry = gameState.board[owner].trackEntry;
+        const entryPos = getSquarePosition(trackEntry, centerX, centerY, squareSize, rotationOffset);
+        const entryInward = getPerpendicularInward(trackEntry, rotationOffset);
+        const entryLeft = getLeftDirection(entryInward);
+
+        const startCenterX = entryPos.x + entryInward.x * 65;
+        const startCenterY = entryPos.y + entryInward.y * 65;
+
+        const crossSpacing = 30;
+        const crossOffsets = [
+            { inward: 0, left: 0 },
+            { inward: crossSpacing, left: 0 },
+            { inward: 0, left: crossSpacing },
+            { inward: 0, left: -crossSpacing },
+            { inward: -crossSpacing, left: 0 }
+        ];
+
+        const offset = crossOffsets[position];
+        return {
+            x: startCenterX + entryInward.x * offset.inward + entryLeft.x * offset.left,
+            y: startCenterY + entryInward.y * offset.inward + entryLeft.y * offset.left
+        };
+    } else if (location === 'home') {
+        const homeEntry = gameState.board[owner].homeEntry;
+        const homeEntryPos = getSquarePosition(homeEntry, centerX, centerY, squareSize, rotationOffset);
+        const homeInward = getPerpendicularInward(homeEntry, rotationOffset);
+        const homeLeft = getLeftDirection(homeInward);
+
+        const homeSpacing = squareSize / 18;
+        const homeStartOffset = homeSpacing;
+
+        const homeOffsets = [
+            { inward: homeStartOffset, left: 0 },
+            { inward: homeStartOffset + homeSpacing, left: 0 },
+            { inward: homeStartOffset + homeSpacing * 2, left: 0 },
+            { inward: homeStartOffset + homeSpacing * 2, left: homeSpacing },
+            { inward: homeStartOffset + homeSpacing * 3, left: homeSpacing }
+        ];
+
+        const offset = homeOffsets[position];
+        return {
+            x: homeEntryPos.x + homeInward.x * offset.inward + homeLeft.x * offset.left,
+            y: homeEntryPos.y + homeInward.y * offset.inward + homeLeft.y * offset.left
+        };
+    }
+
+    return { x: 400, y: 400 }; // Fallback to center
+}
+
+// Get array of track positions between start and end
+function getTrackPath(startPos, endPos, direction = 'forward') {
+    const path = [startPos];
+    let current = startPos;
+
+    if (direction === 'forward') {
+        while (current !== endPos) {
+            current = (current + 1) % 72;
+            path.push(current);
+        }
+    } else {
+        while (current !== endPos) {
+            current = current - 1;
+            if (current < 0) current += 72;
+            path.push(current);
+        }
+    }
+
+    return path;
+}
+
+// Create an animated marble element for smooth transitions
+function createAnimatedMarble(color, startX, startY) {
+    const marble = createSVGElement('circle', {
+        cx: startX,
+        cy: startY,
+        r: 12,
+        fill: color,
+        stroke: '#000',
+        'stroke-width': 2,
+        class: 'animated-marble'
+    });
+    return marble;
+}
+
+// Animate marble along track path (position by position)
+function animateAlongTrackPath(marble, trackPositions, callback) {
+    if (!trackPositions || trackPositions.length < 2) {
+        if (callback) callback();
+        return;
+    }
+
+    let stepIndex = 0;
+    const centerX = 400;
+    const centerY = 400;
+    const squareSize = 680;
+    const rotationOffset = getRotationOffset();
+
+    function animateStep() {
+        if (stepIndex >= trackPositions.length) {
+            if (callback) callback();
+            return;
+        }
+
+        const pos = getSquarePosition(trackPositions[stepIndex], centerX, centerY, squareSize, rotationOffset);
+        marble.setAttribute('cx', pos.x);
+        marble.setAttribute('cy', pos.y);
+
+        stepIndex++;
+
+        if (stepIndex < trackPositions.length) {
+            setTimeout(animateStep, ANIMATION_STEP_DURATION);
+        } else {
+            if (callback) callback();
+        }
+    }
+
+    animateStep();
+}
+
+// Animate marble in direct line (for joker/landing effects)
+function animateDirectLine(marble, startPos, endPos, callback) {
+    const startTime = performance.now();
+    const duration = ANIMATION_DIRECT_DURATION;
+
+    function animate(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+
+        // Ease out cubic for smooth deceleration
+        const eased = 1 - Math.pow(1 - progress, 3);
+
+        const x = startPos.x + (endPos.x - startPos.x) * eased;
+        const y = startPos.y + (endPos.y - startPos.y) * eased;
+
+        marble.setAttribute('cx', x);
+        marble.setAttribute('cy', y);
+
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            if (callback) callback();
+        }
+    }
+
+    requestAnimationFrame(animate);
+}
+
+// Capture current marble positions for change detection
+function captureMarblePositions() {
+    if (!gameState || !gameState.players) return null;
+
+    const positions = {};
+    for (let player of gameState.playerOrder) {
+        if (!gameState.players[player]) continue;
+        positions[player] = {};
+        const marbles = gameState.players[player].marbles;
+        for (let marbleId in marbles) {
+            const marble = marbles[marbleId];
+            positions[player][marbleId] = {
+                location: marble.location,
+                position: marble.position
+            };
+        }
+    }
+    return positions;
+}
+
+// Detect what marbles moved between old and new positions
+function detectMarbleChanges(oldPositions, newPositions) {
+    if (!oldPositions || !newPositions) return [];
+
+    const changes = [];
+
+    for (let player in newPositions) {
+        if (!oldPositions[player]) continue;
+
+        for (let marbleId in newPositions[player]) {
+            const oldMarble = oldPositions[player][marbleId];
+            const newMarble = newPositions[player][marbleId];
+
+            if (!oldMarble) continue;
+
+            // Check if position changed
+            if (oldMarble.location !== newMarble.location ||
+                oldMarble.position !== newMarble.position) {
+                changes.push({
+                    player,
+                    marbleId,
+                    from: { location: oldMarble.location, position: oldMarble.position },
+                    to: { location: newMarble.location, position: newMarble.position }
+                });
+            }
+        }
+    }
+
+    return changes;
+}
+
+// Determine animation type based on move characteristics
+function categorizeMove(change) {
+    const { from, to } = change;
+
+    // If marble was sent back to start, it's a landing effect (direct line)
+    if (to.location === 'start' && from.location === 'track') {
+        return 'direct'; // Marble got knocked back
+    }
+
+    // Track to track movement - slide along track
+    if (from.location === 'track' && to.location === 'track') {
+        return 'track';
+    }
+
+    // Track to home - need to slide along track, then enter home
+    if (from.location === 'track' && to.location === 'home') {
+        return 'track-to-home';
+    }
+
+    // Home to home - direct (within home movement)
+    if (from.location === 'home' && to.location === 'home') {
+        return 'direct';
+    }
+
+    // Start to track (exiting start) - direct line
+    if (from.location === 'start' && to.location === 'track') {
+        return 'direct';
+    }
+
+    // Default to direct for any other cases
+    return 'direct';
+}
+
+// Play all animations for detected changes
+function playAnimations(changes, callback) {
+    if (!changes || changes.length === 0) {
+        if (callback) callback();
+        return;
+    }
+
+    isAnimating = true;
+    const svg = document.getElementById('gameBoard');
+
+    // Separate primary move from secondary effects (e.g., knocked marbles)
+    // Primary move: usually the first change that's a track/track-to-home move
+    // Secondary: marbles sent back to start
+
+    const primaryMoves = changes.filter(c => {
+        const type = categorizeMove(c);
+        return type === 'track' || type === 'track-to-home';
+    });
+
+    const secondaryMoves = changes.filter(c => {
+        const type = categorizeMove(c);
+        return type === 'direct' && c.to.location === 'start';
+    });
+
+    const otherMoves = changes.filter(c => {
+        const type = categorizeMove(c);
+        return type === 'direct' && c.to.location !== 'start';
+    });
+
+    let completedAnimations = 0;
+    const totalAnimations = changes.length;
+
+    function checkComplete() {
+        completedAnimations++;
+        if (completedAnimations >= totalAnimations) {
+            isAnimating = false;
+            renderBoard(); // Re-render to show final state
+            if (callback) callback();
+        }
+    }
+
+    // Animate primary moves first
+    function animatePrimaryMoves(onDone) {
+        if (primaryMoves.length === 0) {
+            onDone();
+            return;
+        }
+
+        let completed = 0;
+        primaryMoves.forEach(change => {
+            const startPos = getMarbleVisualPosition(change.from.location, change.from.position, change.player);
+            const endPos = getMarbleVisualPosition(change.to.location, change.to.position, change.player);
+
+            const marble = createAnimatedMarble(getPlayerColor(change.player), startPos.x, startPos.y);
+            svg.appendChild(marble);
+
+            const moveType = categorizeMove(change);
+
+            if (moveType === 'track') {
+                // Determine direction based on distance
+                const fwdDist = (change.to.position - change.from.position + 72) % 72;
+                const bwdDist = (change.from.position - change.to.position + 72) % 72;
+                const direction = fwdDist <= bwdDist ? 'forward' : 'backward';
+
+                const trackPath = getTrackPath(change.from.position, change.to.position, direction);
+                animateAlongTrackPath(marble, trackPath, () => {
+                    marble.remove();
+                    completed++;
+                    checkComplete();
+                    if (completed >= primaryMoves.length) onDone();
+                });
+            } else if (moveType === 'track-to-home') {
+                // Animate along track to home entry, then direct to home position
+                const homeEntry = gameState.board[change.player].homeEntry;
+                const fwdDist = (homeEntry - change.from.position + 72) % 72;
+                const bwdDist = (change.from.position - homeEntry + 72) % 72;
+                const direction = fwdDist <= bwdDist ? 'forward' : 'backward';
+
+                const trackPath = getTrackPath(change.from.position, homeEntry, direction);
+                animateAlongTrackPath(marble, trackPath, () => {
+                    // Now animate into home
+                    const homeEntryVisual = getMarbleVisualPosition('track', homeEntry, change.player);
+                    animateDirectLine(marble, homeEntryVisual, endPos, () => {
+                        marble.remove();
+                        completed++;
+                        checkComplete();
+                        if (completed >= primaryMoves.length) onDone();
+                    });
+                });
+            }
+        });
+    }
+
+    // Animate secondary moves (knocked marbles) after primary
+    function animateSecondaryMoves(onDone) {
+        if (secondaryMoves.length === 0) {
+            onDone();
+            return;
+        }
+
+        let completed = 0;
+        secondaryMoves.forEach(change => {
+            const startPos = getMarbleVisualPosition(change.from.location, change.from.position, change.player);
+            const endPos = getMarbleVisualPosition(change.to.location, change.to.position, change.player);
+
+            const marble = createAnimatedMarble(getPlayerColor(change.player), startPos.x, startPos.y);
+            svg.appendChild(marble);
+
+            animateDirectLine(marble, startPos, endPos, () => {
+                marble.remove();
+                completed++;
+                checkComplete();
+                if (completed >= secondaryMoves.length) onDone();
+            });
+        });
+    }
+
+    // Animate other moves (e.g., start to track, home movement)
+    function animateOtherMoves() {
+        if (otherMoves.length === 0) {
+            return;
+        }
+
+        otherMoves.forEach(change => {
+            const startPos = getMarbleVisualPosition(change.from.location, change.from.position, change.player);
+            const endPos = getMarbleVisualPosition(change.to.location, change.to.position, change.player);
+
+            const marble = createAnimatedMarble(getPlayerColor(change.player), startPos.x, startPos.y);
+            svg.appendChild(marble);
+
+            animateDirectLine(marble, startPos, endPos, () => {
+                marble.remove();
+                checkComplete();
+            });
+        });
+    }
+
+    // Start animation sequence
+    animatePrimaryMoves(() => {
+        animateSecondaryMoves(() => {
+            // Secondary done
+        });
+    });
+
+    // Other moves can happen in parallel with primary
+    animateOtherMoves();
+}
+
+// ============ END ANIMATION HELPERS ============
+
 function renderBoard() {
     const svg = gameBoard;
     svg.innerHTML = '';
@@ -1601,6 +2029,282 @@ function renderBoard() {
     drawDistanceLine();
 }
 
+// Render board but hide specific marbles (for animation)
+function renderBoardWithHiddenMarbles(hiddenMarbles) {
+    // hiddenMarbles is an array of { player, marbleId, from, to }
+    // We need to hide marbles at their NEW positions (where gameState says they are)
+
+    const hiddenSet = new Set();
+    hiddenMarbles.forEach(h => {
+        hiddenSet.add(`${h.player}-${h.marbleId}`);
+    });
+
+    const svg = gameBoard;
+    svg.innerHTML = '';
+
+    const defs = createSVGElement('defs', {});
+    const filter = createSVGElement('filter', { id: 'goldGlow', x: '-50%', y: '-50%', width: '200%', height: '200%' });
+    const feGaussianBlur = createSVGElement('feGaussianBlur', { stdDeviation: '3', result: 'coloredBlur' });
+    const feFlood = createSVGElement('feFlood', { 'flood-color': '#FFD700', 'flood-opacity': '0.8' });
+    const feComposite = createSVGElement('feComposite', { in2: 'coloredBlur', operator: 'in' });
+    const feMerge = createSVGElement('feMerge', {});
+    const feMergeNode1 = createSVGElement('feMergeNode', {});
+    const feMergeNode2 = createSVGElement('feMergeNode', { in: 'SourceGraphic' });
+    feMerge.appendChild(feMergeNode1);
+    feMerge.appendChild(feMergeNode2);
+    filter.appendChild(feGaussianBlur);
+    filter.appendChild(feFlood);
+    filter.appendChild(feComposite);
+    filter.appendChild(feMerge);
+    defs.appendChild(filter);
+    svg.appendChild(defs);
+
+    const centerX = 400;
+    const centerY = 400;
+    const squareSize = 680;
+    const marbleRadius = 12;
+
+    const rotationOffset = getRotationOffset();
+
+    // Draw track circles (no destinations highlighted during animation)
+    for (let i = 0; i < 72; i++) {
+        const pos = getSquarePosition(i, centerX, centerY, squareSize, rotationOffset);
+
+        const circle = createSVGElement('circle', {
+            cx: pos.x,
+            cy: pos.y,
+            r: 15,
+            fill: '#e0e0e0',
+            stroke: '#333',
+            'stroke-width': 2,
+            'data-track-position': i
+        });
+
+        svg.appendChild(circle);
+
+        const marbleData = getMarbleAtTrackPosition(i);
+        if (marbleData && !hiddenSet.has(`${marbleData.player}-${marbleData.marbleId}`)) {
+            const marble = createSVGElement('circle', {
+                cx: pos.x,
+                cy: pos.y,
+                r: marbleRadius,
+                fill: getPlayerColor(marbleData.player),
+                stroke: '#000',
+                'stroke-width': 2,
+                class: 'marble',
+                'pointer-events': 'none'
+            });
+            svg.appendChild(marble);
+        }
+    }
+
+    const positions = ['Seat1', 'Seat2', 'Seat3', 'Seat4'];
+    positions.forEach((pos) => {
+        if (!gameState.players[pos]) return;
+
+        const trackEntry = gameState.board[pos].trackEntry;
+        const homeEntry = gameState.board[pos].homeEntry;
+        const playerFinished = isPlayerFinished(pos);
+
+        const entryPos = getSquarePosition(trackEntry, centerX, centerY, squareSize, rotationOffset);
+        const homeEntryPos = getSquarePosition(homeEntry, centerX, centerY, squareSize, rotationOffset);
+
+        const homeInward = getPerpendicularInward(homeEntry, rotationOffset);
+        const homeLeft = getLeftDirection(homeInward);
+
+        const entryInward = getPerpendicularInward(trackEntry, rotationOffset);
+        const entryLeft = getLeftDirection(entryInward);
+
+        const startCenterX = entryPos.x + entryInward.x * 65;
+        const startCenterY = entryPos.y + entryInward.y * 65;
+
+        const crossSpacing = 30;
+        const crossOffsets = [
+            { inward: 0, left: 0 },
+            { inward: crossSpacing, left: 0 },
+            { inward: 0, left: crossSpacing },
+            { inward: 0, left: -crossSpacing },
+            { inward: -crossSpacing, left: 0 }
+        ];
+
+        const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+        const isCurrentPlayer = pos === currentPlayer;
+
+        for (let i = 0; i < 5; i++) {
+            const offset = crossOffsets[i];
+            const startX = startCenterX + entryInward.x * offset.inward + entryLeft.x * offset.left;
+            const startY = startCenterY + entryInward.y * offset.inward + entryLeft.y * offset.left;
+
+            const startCircle = createSVGElement('circle', {
+                cx: startX,
+                cy: startY,
+                r: 15,
+                fill: 'transparent',
+                stroke: isCurrentPlayer ? '#FFD700' : getPlayerColor(pos),
+                'stroke-width': isCurrentPlayer ? 4 : 2,
+                filter: isCurrentPlayer ? 'url(#goldGlow)' : ''
+            });
+            svg.appendChild(startCircle);
+
+            if (gameState.board[pos].start[i].marble) {
+                const marbleId = `marble${i}`;
+                if (!hiddenSet.has(`${pos}-${marbleId}`)) {
+                    const marble = createSVGElement('circle', {
+                        cx: startX,
+                        cy: startY,
+                        r: marbleRadius,
+                        fill: getPlayerColor(pos),
+                        stroke: '#000',
+                        'stroke-width': 2,
+                        class: 'marble',
+                        'pointer-events': 'none'
+                    });
+                    svg.appendChild(marble);
+                }
+            }
+        }
+
+        const homeSpacing = squareSize / 18;
+        const homeStartOffset = homeSpacing;
+
+        const homeOffsets = [
+            { inward: homeStartOffset, left: 0 },
+            { inward: homeStartOffset + homeSpacing, left: 0 },
+            { inward: homeStartOffset + homeSpacing * 2, left: 0 },
+            { inward: homeStartOffset + homeSpacing * 2, left: homeSpacing },
+            { inward: homeStartOffset + homeSpacing * 3, left: homeSpacing }
+        ];
+
+        for (let i = 0; i < 5; i++) {
+            const offset = homeOffsets[i];
+            const homeX = homeEntryPos.x + homeInward.x * offset.inward + homeLeft.x * offset.left;
+            const homeY = homeEntryPos.y + homeInward.y * offset.inward + homeLeft.y * offset.left;
+
+            const homeCircle = createSVGElement('circle', {
+                cx: homeX,
+                cy: homeY,
+                r: 15,
+                fill: 'transparent',
+                stroke: playerFinished ? '#FFD700' : getPlayerColor(pos),
+                'stroke-width': playerFinished ? 4 : 3,
+                filter: playerFinished ? 'url(#goldGlow)' : '',
+                'data-home-position': i,
+                'data-home-player': pos
+            });
+
+            svg.appendChild(homeCircle);
+
+            if (gameState.board[pos].home[i].marble) {
+                const marbleId = getMarbleIdAtHomePosition(pos, i);
+
+                if (marbleId && !hiddenSet.has(`${pos}-${marbleId}`)) {
+                    const marble = createSVGElement('circle', {
+                        cx: homeX,
+                        cy: homeY,
+                        r: marbleRadius,
+                        fill: getPlayerColor(pos),
+                        stroke: '#000',
+                        'stroke-width': 2,
+                        class: 'marble',
+                        'pointer-events': 'none'
+                    });
+                    svg.appendChild(marble);
+                }
+            }
+        }
+
+        // Display player name
+        if (gameState.players[pos]) {
+            const seatIndex = gameState.playerOrder.indexOf(pos);
+            const mySeatIndex = gameState.playerOrder.indexOf(myPosition);
+            const relativeSeatDiff = (seatIndex - mySeatIndex + 4) % 4;
+
+            let labelX, labelY, textRotation = 0;
+
+            if (relativeSeatDiff === 0) {
+                labelX = 400;
+                labelY = 785;
+            } else if (relativeSeatDiff === 2) {
+                labelX = 400;
+                labelY = 15;
+            } else if (relativeSeatDiff === 1) {
+                labelX = 15;
+                labelY = 400;
+                textRotation = -90;
+            } else {
+                labelX = 785;
+                labelY = 400;
+                textRotation = 90;
+            }
+
+            const nameLabel = createSVGElement('text', {
+                x: labelX,
+                y: labelY,
+                'text-anchor': 'middle',
+                'dominant-baseline': 'middle',
+                fill: playerFinished ? '#FFD700' : getPlayerColor(pos),
+                'font-size': '20',
+                'font-weight': 'bold',
+                transform: textRotation !== 0 ? `rotate(${textRotation}, ${labelX}, ${labelY})` : ''
+            });
+            nameLabel.textContent = gameState.players[pos].name + (playerFinished ? ' ✓' : '');
+            svg.appendChild(nameLabel);
+        }
+    });
+
+    // Deck counter in center
+    const deckCount = gameState.deck ? gameState.deck.length : 0;
+
+    const deckRect = createSVGElement('rect', {
+        x: centerX - 40,
+        y: centerY - 50,
+        width: 80,
+        height: 100,
+        rx: 8,
+        fill: '#c0392b',
+        stroke: '#922b21',
+        'stroke-width': 3
+    });
+    svg.appendChild(deckRect);
+
+    const pattern1 = createSVGElement('rect', {
+        x: centerX - 30,
+        y: centerY - 40,
+        width: 60,
+        height: 80,
+        rx: 5,
+        fill: 'none',
+        stroke: '#ecf0f1',
+        'stroke-width': 2
+    });
+    svg.appendChild(pattern1);
+
+    const pattern2 = createSVGElement('rect', {
+        x: centerX - 20,
+        y: centerY - 30,
+        width: 40,
+        height: 60,
+        rx: 3,
+        fill: 'none',
+        stroke: '#ecf0f1',
+        'stroke-width': 2
+    });
+    svg.appendChild(pattern2);
+
+    const deckCountText = createSVGElement('text', {
+        x: centerX,
+        y: centerY + 70,
+        'text-anchor': 'middle',
+        'font-size': '18',
+        'font-weight': 'bold',
+        fill: '#ffffff',
+        stroke: '#000000',
+        'stroke-width': '1'
+    });
+    deckCountText.textContent = `${deckCount} cards`;
+    svg.appendChild(deckCountText);
+}
+
 function renderHand() {
     if (!myPosition || !gameState.players[myPosition]) return;
 
@@ -1661,6 +2365,9 @@ function renderMovesLog() {
 }
 
 function onCardClick(cardIndex) {
+    // Block interactions during animations
+    if (isAnimating) return;
+
     const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
     const isMyTurn = currentPlayer === myPosition;
 
@@ -1715,6 +2422,9 @@ function onCardClick(cardIndex) {
 }
 
 function onMarbleClick(marbleOwner, marbleId) {
+    // Block interactions during animations
+    if (isAnimating) return;
+
     if (selectedCard === null && !splitMoveState?.awaitingSecondMarble) {
         alert('Select a card first!');
         return;
@@ -1970,6 +2680,9 @@ function handleSplitSecondMarble(marbleOwner, marbleId) {
 }
 
 function onDestinationClick(destData) {
+    // Block interactions during animations
+    if (isAnimating) return;
+
     if (!splitMoveState) return;
     
     if (splitMoveState.awaitingSecondDestination) {
@@ -2006,6 +2719,9 @@ function onDestinationClick(destData) {
 }
 
 function onHomeChoiceClick(enterHome) {
+    // Block interactions during animations
+    if (isAnimating) return;
+
     if (!homeChoiceState) return;
     
     const moveData = { 
