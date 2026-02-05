@@ -26,6 +26,7 @@ let distanceCountState = {
 let isAnimating = false;
 let animationQueue = [];
 let previousMarblePositions = null; // To track position changes
+let visualCurrentPlayerIndex = null; // Tracks whose turn it VISUALLY appears to be (delays during animations)
 
 // DOM Elements
 const passwordScreen = document.getElementById('passwordScreen');
@@ -126,8 +127,10 @@ socket.on('gameStarted', (state) => {
     selectedCard = null;
     selectedMarbles = [];
     selectedStartingPlayer = null;
+    visualCurrentPlayerIndex = state.currentPlayerIndex; // Initialize visual turn
     showScreen('gameScreen');
     renderGame();
+    updateTurnGlow(); // Update the bottom screen glow
 });
 
 socket.on('gameStateUpdate', (state) => {
@@ -164,6 +167,7 @@ socket.on('gameStateUpdate', (state) => {
     const changes = detectMarbleChanges(oldPositions, newPositions);
 
     if (changes.length > 0 && !isAnimating) {
+        // Don't update visual turn yet - wait for animations to complete
         // Hide marbles that are moving (they'll be animated)
         renderBoardWithHiddenMarbles(changes);
         renderHand();
@@ -171,12 +175,17 @@ socket.on('gameStateUpdate', (state) => {
         renderMovesLog();
         renderDebugPanel();
 
-        // Play animations, then re-render normally
+        // Play animations, then update visual turn and re-render
         playAnimations(changes, () => {
-            // Animation complete, normal render happens in playAnimations
+            // Animation complete - now update visual turn
+            visualCurrentPlayerIndex = gameState.currentPlayerIndex;
+            updateTurnGlow();
         });
     } else {
+        // No animation - update visual turn immediately
+        visualCurrentPlayerIndex = gameState.currentPlayerIndex;
         renderGame();
+        updateTurnGlow();
     }
 });
 
@@ -417,6 +426,35 @@ function renderGame() {
     renderGameInfo();
     renderMovesLog();
     renderDebugPanel();
+}
+
+// Update the bottom screen glow to indicate it's the player's turn
+function updateTurnGlow() {
+    let turnGlow = document.getElementById('turnGlow');
+
+    // Create the glow element if it doesn't exist
+    if (!turnGlow) {
+        turnGlow = document.createElement('div');
+        turnGlow.id = 'turnGlow';
+        turnGlow.className = 'turn-glow';
+        document.getElementById('gameScreen').appendChild(turnGlow);
+    }
+
+    if (!gameState || !gameState.gameStarted) {
+        turnGlow.classList.remove('active');
+        return;
+    }
+
+    // Use visual turn index for consistency with the board glow
+    const visualTurnIndex = visualCurrentPlayerIndex !== null ? visualCurrentPlayerIndex : gameState.currentPlayerIndex;
+    const visualCurrentPlayer = gameState.playerOrder[visualTurnIndex];
+    const isMyTurn = visualCurrentPlayer === myPosition;
+
+    if (isMyTurn) {
+        turnGlow.classList.add('active');
+    } else {
+        turnGlow.classList.remove('active');
+    }
 }
 
 function renderDebugPanel() {
@@ -1806,8 +1844,10 @@ function renderBoard() {
             { inward: -crossSpacing, left: 0 }
         ];
         
-        const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
-        const isCurrentPlayer = pos === currentPlayer;
+        // Use visualCurrentPlayerIndex for the turn glow (delays during animations)
+        const visualTurnIndex = visualCurrentPlayerIndex !== null ? visualCurrentPlayerIndex : gameState.currentPlayerIndex;
+        const visualCurrentPlayer = gameState.playerOrder[visualTurnIndex];
+        const isCurrentPlayer = pos === visualCurrentPlayer;
 
         for (let i = 0; i < 5; i++) {
             const offset = crossOffsets[i];
@@ -1824,7 +1864,7 @@ function renderBoard() {
                 filter: isCurrentPlayer ? 'url(#goldGlow)' : ''
             });
             svg.appendChild(startCircle);
-            
+
             if (gameState.board[pos].start[i].marble) {
                 const hitArea = createSVGElement('circle', {
                     cx: startX,
@@ -2127,8 +2167,10 @@ function renderBoardWithHiddenMarbles(hiddenMarbles) {
             { inward: -crossSpacing, left: 0 }
         ];
 
-        const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
-        const isCurrentPlayer = pos === currentPlayer;
+        // Use visualCurrentPlayerIndex for the turn glow (delays during animations)
+        const visualTurnIndex = visualCurrentPlayerIndex !== null ? visualCurrentPlayerIndex : gameState.currentPlayerIndex;
+        const visualCurrentPlayer = gameState.playerOrder[visualTurnIndex];
+        const isCurrentPlayer = pos === visualCurrentPlayer;
 
         for (let i = 0; i < 5; i++) {
             const offset = crossOffsets[i];

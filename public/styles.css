@@ -784,3 +784,21 @@ body {
         font-size: 0.9rem;
     }
 }
+
+/* Turn indicator glow at bottom of screen */
+.turn-glow {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 120px;
+    background: linear-gradient(to top, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.1) 40%, transparent);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease-in-out;
+    z-index: 100;
+}
+
+.turn-glow.active {
+    opacity: 1;
+}
