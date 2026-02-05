@@ -366,6 +366,369 @@ function getSpacesToPosition(start, target, direction = 'forward') {
   return spaces;
 }
 
+// ============ LEGAL PLAY CHECKING ============
+
+// Check if player has any legal play with any card in their hand
+function hasLegalPlay(position) {
+  const player = gameState.players[position];
+  if (!player || !player.hand) return false;
+
+  for (let card of player.hand) {
+    if (canPlayCard(position, card)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Check if a specific card can be legally played
+function canPlayCard(position, card) {
+  const cardValue = card.value;
+
+  // Handle face cards and special cards
+  if (cardValue === 'A') {
+    // Ace: Enter from start OR move 1 OR move 11
+    if (canEnterFromStart(position)) return true;
+    if (canMoveAnyMarbleForward(position, 1)) return true;
+    if (canMoveAnyMarbleForward(position, 11)) return true;
+    return false;
+  }
+
+  if (cardValue === 'K') {
+    // King: Enter from start OR move 13
+    if (canEnterFromStart(position)) return true;
+    if (canMoveAnyMarbleForward(position, 13)) return true;
+    return false;
+  }
+
+  if (cardValue === 'Joker') {
+    // Joker: Enter from start OR land on any other player's marble
+    if (canEnterFromStart(position)) return true;
+    if (canJokerMove(position)) return true;
+    return false;
+  }
+
+  if (cardValue === 'J') {
+    // Jack moves 11 spaces
+    return canMoveAnyMarbleForward(position, 11);
+  }
+
+  if (cardValue === 'Q') {
+    // Queen moves 12 spaces
+    return canMoveAnyMarbleForward(position, 12);
+  }
+
+  if (cardValue === '4') {
+    // 4: Move backward 4 spaces
+    return canMoveAnyMarbleBackward(position, 4);
+  }
+
+  if (cardValue === '7') {
+    // 7: Split forward move - need at least one marble that can move 1-7 spaces forward
+    return canMove7Card(position);
+  }
+
+  if (cardValue === '9') {
+    // 9: Split move - forward 1-8, then different marble backward remainder
+    return canMove9Card(position);
+  }
+
+  // Regular number cards (2, 3, 5, 6, 8, 10)
+  const spaces = parseInt(cardValue);
+  if (!isNaN(spaces)) {
+    return canMoveAnyMarbleForward(position, spaces);
+  }
+
+  return false;
+}
+
+// Check if player can enter a marble from start
+function canEnterFromStart(position) {
+  const player = gameState.players[position];
+
+  // Check if player has any marble in start
+  let hasMarbleInStart = false;
+  for (let marbleId in player.marbles) {
+    if (player.marbles[marbleId].location === 'start') {
+      hasMarbleInStart = true;
+      break;
+    }
+  }
+  if (!hasMarbleInStart) return false;
+
+  // Check if track entry is not blocked by own marble
+  const entryPosition = gameState.board[position].trackEntry;
+  const occupant = getMarbleOnTrack(entryPosition);
+
+  if (occupant && occupant.player === position) {
+    return false; // Blocked by own marble
+  }
+
+  // Check if landing on teammate and their home entry is blocked
+  const teammate = getTeammate(position);
+  if (occupant && occupant.player === teammate && !canLandOnTeammate(teammate)) {
+    return false;
+  }
+
+  return true;
+}
+
+// Check if any controllable marble can move forward the given spaces
+function canMoveAnyMarbleForward(position, spaces) {
+  const controllableMarbles = getControllableMarbles(position);
+
+  for (let { owner, marbleId } of controllableMarbles) {
+    if (canMarbleMoveForward(owner, marbleId, spaces)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Check if a specific marble can move forward the given spaces
+function canMarbleMoveForward(owner, marbleId, spaces) {
+  const marble = gameState.players[owner].marbles[marbleId];
+  if (!marble) return false;
+
+  // Must be on track or in home
+  if (marble.location !== 'track' && marble.location !== 'home') {
+    return false;
+  }
+
+  // If in home, check if can move within home
+  if (marble.location === 'home') {
+    const currentHomePos = marble.position;
+    const newHomePos = currentHomePos + spaces;
+    if (newHomePos > 4) return false; // Would go past end of home
+
+    // Check path is clear
+    for (let i = currentHomePos + 1; i <= newHomePos; i++) {
+      if (gameState.board[owner].home[i].marble !== null) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // On track - check if can move forward
+  const startPos = marble.position;
+  const homeEntry = gameState.board[owner].homeEntry;
+
+  // Check if crosses or lands on home entry
+  let crossesHome = false;
+  let spacesToHomeEntry = 0;
+  const onHomeEntry = startPos === homeEntry;
+
+  if (!onHomeEntry) {
+    for (let i = 1; i <= spaces; i++) {
+      if ((startPos + i) % 72 === homeEntry) {
+        crossesHome = true;
+        spacesToHomeEntry = i;
+        break;
+      }
+    }
+  }
+
+  // If on home entry or crosses it, check home entry option
+  if (onHomeEntry || crossesHome) {
+    const spacesIntoHome = onHomeEntry ? spaces : spaces - spacesToHomeEntry;
+
+    // Check if can enter home
+    if (spacesIntoHome > 0 && spacesIntoHome <= 5) {
+      const homeIndex = spacesIntoHome - 1;
+      if (!isHomePathBlockedFromStart(owner, homeIndex) &&
+          gameState.board[owner].home[homeIndex].marble === null) {
+        return true; // Can enter home
+      }
+    }
+
+    // Check if can pass home and continue on track
+    const trackDest = (startPos + spaces) % 72;
+    if (!isPathBlockedIncludingHomeEntry(owner, startPos, trackDest, homeEntry)) {
+      const occupant = getMarbleOnTrack(trackDest);
+      if (!occupant || occupant.player !== owner) {
+        // Check teammate landing validity
+        const teammate = getTeammate(owner);
+        if (occupant && occupant.player === teammate && !canLandOnTeammate(teammate)) {
+          return false;
+        }
+        return true;
+      }
+    }
+  } else {
+    // Normal forward move not crossing home
+    const newPosition = (startPos + spaces) % 72;
+    if (!isPathBlocked(owner, startPos, newPosition, 'forward')) {
+      const occupant = getMarbleOnTrack(newPosition);
+      if (!occupant || occupant.player !== owner) {
+        const teammate = getTeammate(owner);
+        if (occupant && occupant.player === teammate && !canLandOnTeammate(teammate)) {
+          return false;
+        }
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+// Check if any controllable marble can move backward the given spaces
+function canMoveAnyMarbleBackward(position, spaces) {
+  const controllableMarbles = getControllableMarbles(position);
+
+  for (let { owner, marbleId } of controllableMarbles) {
+    const marble = gameState.players[owner].marbles[marbleId];
+    if (marble.location !== 'track') continue;
+
+    let newPosition = marble.position - spaces;
+    if (newPosition < 0) newPosition += 72;
+
+    if (!isPathBlocked(owner, marble.position, newPosition, 'backward')) {
+      const occupant = getMarbleOnTrack(newPosition);
+      if (!occupant || occupant.player !== owner) {
+        const teammate = getTeammate(owner);
+        if (occupant && occupant.player === teammate && !canLandOnTeammate(teammate)) {
+          continue;
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Check if player can make a valid joker move
+function canJokerMove(position) {
+  const controllableMarbles = getControllableMarbles(position);
+
+  // Need at least one marble to move
+  if (controllableMarbles.length === 0) return false;
+
+  // Check if there's any target marble on track (not our own)
+  for (let player of gameState.playerOrder) {
+    if (player === position) continue; // Skip own marbles for target
+
+    for (let marbleId in gameState.players[player].marbles) {
+      const marble = gameState.players[player].marbles[marbleId];
+      if (marble.location === 'track') {
+        // Found a potential target - check if we can land on it
+        const teammate = getTeammate(position);
+        if (player === teammate && !canLandOnTeammate(teammate)) {
+          continue; // Can't land on this teammate marble
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Check if player can play a 7 card
+function canMove7Card(position) {
+  const controllableMarbles = getControllableMarbles(position);
+
+  // Need at least one marble that can move forward any amount 1-7
+  for (let { owner, marbleId } of controllableMarbles) {
+    for (let spaces = 1; spaces <= 7; spaces++) {
+      if (canMarbleMoveForward(owner, marbleId, spaces)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Check if player can play a 9 card
+function canMove9Card(position) {
+  const controllableMarbles = getControllableMarbles(position);
+
+  // Need: one marble for forward (1-8 spaces) AND another marble on track for backward
+  // The tricky part: after first marble moves, we need a DIFFERENT marble for backward
+
+  // First, check if we have at least 2 marbles, or 1 marble + teammate marbles if we'd finish
+  const trackMarbles = controllableMarbles.filter(m =>
+    gameState.players[m.owner].marbles[m.marbleId].location === 'track'
+  );
+
+  // Need at least one marble on track for backward move
+  if (trackMarbles.length === 0) return false;
+
+  // Need at least one marble that can move forward
+  for (let { owner, marbleId } of controllableMarbles) {
+    for (let spaces = 1; spaces <= 8; spaces++) {
+      if (canMarbleMoveForward(owner, marbleId, spaces)) {
+        // Check if there's a DIFFERENT marble on track for backward
+        const remainingSpaces = 9 - spaces;
+
+        for (let track of trackMarbles) {
+          // Must be different marble
+          if (track.owner === owner && track.marbleId === marbleId) continue;
+
+          // Check if this marble could move backward
+          const trackMarble = gameState.players[track.owner].marbles[track.marbleId];
+          let backPos = trackMarble.position - remainingSpaces;
+          if (backPos < 0) backPos += 72;
+
+          // Simple check - is path clear and destination valid?
+          if (!isPathBlocked(track.owner, trackMarble.position, backPos, 'backward')) {
+            const occupant = getMarbleOnTrack(backPos);
+            if (!occupant || occupant.player !== track.owner) {
+              const teammate = getTeammate(track.owner);
+              if (occupant && occupant.player === teammate && !canLandOnTeammate(teammate)) {
+                continue;
+              }
+              return true;
+            }
+          }
+        }
+
+        // Also check if moving this marble would finish the player, making teammate marbles available
+        const marble = gameState.players[owner].marbles[marbleId];
+        if (marble.location === 'track' && wouldBeFinishedAfterMove(owner, marbleId, true)) {
+          const teammate = getTeammate(position);
+          for (let mId in gameState.players[teammate].marbles) {
+            const tMarble = gameState.players[teammate].marbles[mId];
+            if (tMarble.location === 'track') {
+              let backPos = tMarble.position - remainingSpaces;
+              if (backPos < 0) backPos += 72;
+              if (!isPathBlocked(teammate, tMarble.position, backPos, 'backward')) {
+                const occupant = getMarbleOnTrack(backPos);
+                if (!occupant || occupant.player !== teammate) {
+                  return true;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Get all marbles the player can control (own + teammate's if finished)
+function getControllableMarbles(position) {
+  const marbles = [];
+
+  // Own marbles
+  for (let marbleId in gameState.players[position].marbles) {
+    marbles.push({ owner: position, marbleId });
+  }
+
+  // Teammate's marbles if finished
+  if (isPlayerFinished(position)) {
+    const teammate = getTeammate(position);
+    for (let marbleId in gameState.players[teammate].marbles) {
+      marbles.push({ owner: teammate, marbleId });
+    }
+  }
+
+  return marbles;
+}
+
+// ============ END LEGAL PLAY CHECKING ============
+
 function enterLobby() {
   gameState.playerOrder.sort((a, b) => {
     const order = ['Seat1', 'Seat2', 'Seat3', 'Seat4'];
@@ -726,8 +1089,15 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Check if player has any legal play - can only discard if no legal moves
+    if (hasLegalPlay(position)) {
+      console.log(`[discardCard] REJECTED - ${position} has a legal play available`);
+      socket.emit('error', 'You have a legal play available - you must play a card');
+      return;
+    }
+
     const card = player.hand.splice(cardIndex, 1)[0];
-    console.log(`[discardCard] ${position} discarding ${card.value} of ${card.suit}`);
+    console.log(`[discardCard] ${position} discarding ${card.value} of ${card.suit} (no legal plays available)`);
     player.discardPile.push(card);
     addMoveToLog(position, card);
     dealCards(position, 1);
