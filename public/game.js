@@ -456,26 +456,39 @@ function countMarblesOnTrack() {
 function canPlay9Card() {
     const { marbles } = countMoveableMarbles();
     const trackMarbles = marbles.filter(m => m.location === 'track');
-    
+
+    // Check if player has 4 marbles in home (could finish with first move and use teammate's marble)
+    let inHome = 0;
+    for (let marbleId in gameState.players[myPosition].marbles) {
+        if (gameState.players[myPosition].marbles[marbleId].location === 'home') {
+            inHome++;
+        }
+    }
+
+    // If player has 4 in home and 1 marble that could move forward, AND teammate has track marbles
+    if (inHome === 4 && marbles.length >= 1) {
+        const teammate = getTeammate(myPosition);
+        let teammateTrackMarbles = 0;
+        for (let marbleId in gameState.players[teammate].marbles) {
+            if (gameState.players[teammate].marbles[marbleId].location === 'track') {
+                teammateTrackMarbles++;
+            }
+        }
+        if (teammateTrackMarbles > 0) {
+            return true; // Can finish with first move, then use teammate's marble for backward
+        }
+    }
+
     // Need at least 2 marbles total, and at least 1 on track for backward move
     if (marbles.length < 2 || trackMarbles.length < 1) {
         return false;
     }
-    
-    // If only 1 marble can move forward and it's the only track marble, can't play
-    // Need either: 2+ track marbles, or 1+ home marbles that can move + 1 track marble
-    const forwardMarbles = marbles.length;
-    const backwardMarbles = trackMarbles.length;
-    
+
     // We need at least 1 for forward and 1 different for backward
-    // The forward marble could be in home, backward must be on track
-    if (forwardMarbles >= 1 && backwardMarbles >= 1) {
-        // Check if we have at least 2 distinct marbles
-        if (marbles.length >= 2) {
-            return true;
-        }
+    if (marbles.length >= 2) {
+        return true;
     }
-    
+
     return false;
 }
 

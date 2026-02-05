@@ -190,9 +190,11 @@ function canControlMarble(actingPlayer, marbleOwner) {
 }
 
 // Count moveable marbles for a player (considering teammate if finished)
-function countMoveableMarbles(actingPlayer) {
+// If assumeFinishedAfterMove is true, count teammate's marbles even if not finished yet
+// (used when checking if a 7/9 card split is valid when the first move would finish the player)
+function countMoveableMarbles(actingPlayer, assumeFinishedAfterMove = false) {
   let count = 0;
-  
+
   // Check own marbles
   for (let marbleId in gameState.players[actingPlayer].marbles) {
     const marble = gameState.players[actingPlayer].marbles[marbleId];
@@ -200,9 +202,9 @@ function countMoveableMarbles(actingPlayer) {
       count++;
     }
   }
-  
-  // Check teammate's marbles if finished
-  if (isPlayerFinished(actingPlayer)) {
+
+  // Check teammate's marbles if finished (or will be finished after this move)
+  if (isPlayerFinished(actingPlayer) || assumeFinishedAfterMove) {
     const teammate = getTeammate(actingPlayer);
     for (let marbleId in gameState.players[teammate].marbles) {
       const marble = gameState.players[teammate].marbles[marbleId];
@@ -211,8 +213,36 @@ function countMoveableMarbles(actingPlayer) {
       }
     }
   }
-  
+
   return count;
+}
+
+// Check if a player would be finished after moving a specific marble to home
+// This checks if the player has 4 marbles in home and only 1 marble left to move
+// (meaning if that marble enters home, they'd be finished)
+function wouldBeFinishedAfterMove(player, marbleId, enteringHome) {
+  // Count how many marbles are already in home
+  let inHome = 0;
+  let onTrackOrHome = 0;
+
+  for (let mId in gameState.players[player].marbles) {
+    const marble = gameState.players[player].marbles[mId];
+    if (marble.location === 'home') {
+      inHome++;
+    }
+    if (marble.location === 'track' || marble.location === 'home') {
+      onTrackOrHome++;
+    }
+  }
+
+  // If 4 are already home and enteringHome is true/undefined (could enter), player might finish
+  // We're optimistic here - if the player has 4 in home and is moving their last marble,
+  // we assume it could potentially enter home to allow the split move
+  if (inHome === 4 && (enteringHome === true || enteringHome === undefined)) {
+    return true;
+  }
+
+  return false;
 }
 
 // Count marbles on track only (for 9 card backward requirement)
@@ -467,8 +497,10 @@ io.on('connection', (socket) => {
     }
 
     // Bug 1 Fix: If only 1 moveable marble for 7 card, must use all 7 spaces
+    // Exception: If this move would finish the player, teammate's marbles become available
     if (cardType === 7) {
-      const moveableCount = countMoveableMarbles(position);
+      const willFinishAfterMove = wouldBeFinishedAfterMove(marbleOwner, moveData.marbleId, moveData.enterHome);
+      const moveableCount = countMoveableMarbles(position, willFinishAfterMove);
       if (moveableCount === 1 && moveData.spaces !== 7) {
         socket.emit('error', 'Only 1 marble can move - must use all 7 spaces');
         return;
