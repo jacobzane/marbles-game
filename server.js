@@ -330,9 +330,21 @@ function isPathBlocked(player, startPos, endPos, direction = 'forward') {
   return false;
 }
 
+// Check if a specific home position is occupied by checking marble objects (source of truth)
+function isHomePositionOccupied(player, homeIndex) {
+  for (let marbleId in gameState.players[player].marbles) {
+    const marble = gameState.players[player].marbles[marbleId];
+    if (marble.location === 'home' && marble.position === homeIndex) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function isHomePathBlocked(player, startHomePos, endHomePos) {
   for (let i = startHomePos + 1; i < endHomePos; i++) {
-    if (gameState.board[player].home[i].marble !== null) {
+    // Use marble objects as source of truth instead of board state
+    if (isHomePositionOccupied(player, i)) {
       return true;
     }
   }
@@ -341,7 +353,8 @@ function isHomePathBlocked(player, startHomePos, endHomePos) {
 
 function isHomePathBlockedFromStart(player, targetHomeIndex) {
   for (let i = 0; i < targetHomeIndex; i++) {
-    if (gameState.board[player].home[i].marble !== null) {
+    // Use marble objects as source of truth instead of board state
+    if (isHomePositionOccupied(player, i)) {
       return true;
     }
   }
@@ -516,9 +529,9 @@ function canMarbleMoveForward(owner, marbleId, spaces) {
     const newHomePos = currentHomePos + spaces;
     if (newHomePos > 4) return false; // Would go past end of home
 
-    // Check path is clear
+    // Check path is clear using marble objects as source of truth
     for (let i = currentHomePos + 1; i <= newHomePos; i++) {
-      if (gameState.board[owner].home[i].marble !== null) {
+      if (isHomePositionOccupied(owner, i)) {
         return false;
       }
     }
@@ -552,7 +565,7 @@ function canMarbleMoveForward(owner, marbleId, spaces) {
     if (spacesIntoHome > 0 && spacesIntoHome <= 5) {
       const homeIndex = spacesIntoHome - 1;
       if (!isHomePathBlockedFromStart(owner, homeIndex) &&
-          gameState.board[owner].home[homeIndex].marble === null) {
+          !isHomePositionOccupied(owner, homeIndex)) {
         return true; // Can enter home
       }
     }
@@ -1257,8 +1270,9 @@ function moveForward(player, moveData, spaces) {
     if (isHomePathBlocked(player, currentHomePos, newHomePos)) {
       return { success: false, message: 'Path blocked by your own marble in home' };
     }
-    
-    if (gameState.board[player].home[newHomePos].marble !== null) {
+
+    // Use marble objects as source of truth instead of board state
+    if (isHomePositionOccupied(player, newHomePos)) {
       return { success: false, message: 'Home space occupied' };
     }
     
@@ -1288,9 +1302,9 @@ function moveForward(player, moveData, spaces) {
   if (onHomeEntry || crossesHome) {
     const spacesIntoHome = onHomeEntry ? spaces : spaces - spacesToHomeEntry;
     
-    const canEnterHome = spacesIntoHome > 0 && spacesIntoHome <= 5 && 
+    const canEnterHome = spacesIntoHome > 0 && spacesIntoHome <= 5 &&
       !isHomePathBlockedFromStart(player, spacesIntoHome - 1) &&
-      gameState.board[player].home[spacesIntoHome - 1].marble === null;
+      !isHomePositionOccupied(player, spacesIntoHome - 1);
     
     const trackDestination = (startPos + spaces) % 72;
     const canPassHome = !isPathBlockedIncludingHomeEntry(player, startPos, trackDestination, homeEntry) &&
