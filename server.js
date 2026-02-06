@@ -965,7 +965,21 @@ io.on('connection', (socket) => {
         existingPlayer.socketId = socket.id;
         existingPlayer.disconnected = false;
 
-        console.log(`Player ${playerName} reconnected to ${position}`);
+        // Validate hand size - should never exceed 5 cards
+        if (existingPlayer.hand.length > 5) {
+          console.warn(`[RECONNECT] Player ${playerName} had ${existingPlayer.hand.length} cards, trimming to 5`);
+          // Return excess cards to deck
+          const excessCards = existingPlayer.hand.splice(5);
+          gameState.deck.unshift(...excessCards);
+        }
+
+        // Clear pending split move if it belongs to this player (prevents state corruption)
+        if (gameState.pendingSplitMove && gameState.pendingSplitMove.player === position) {
+          console.log(`[RECONNECT] Clearing pending split move for ${playerName}`);
+          gameState.pendingSplitMove = null;
+        }
+
+        console.log(`[RECONNECT] Player ${playerName} reconnected with ${existingPlayer.hand.length} cards`);
         socket.emit('joinSuccess', { position, gameState });
         io.emit('playerReconnected', { position, playerName });
         io.emit('gameStateUpdate', gameState);
