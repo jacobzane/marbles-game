@@ -30,6 +30,9 @@ let gameState = {
 // Track disconnected players for reconnection
 let disconnectionTimeouts = {};
 
+// Temporary storage for landing effects during move processing
+let currentMoveLandingEffects = [];
+
 function initializeBoard() {
   return {
     Seat1: {
@@ -123,7 +126,7 @@ function getCardValue(card) {
   return parseInt(card.value);
 }
 
-function addMoveToLog(player, card) {
+function addMoveToLog(player, card, action = 'played', landingEffects = []) {
   const playerName = gameState.players[player]?.name || player;
 
   // Format card display
@@ -138,14 +141,26 @@ function addMoveToLog(player, card) {
     cardDisplay = `${card.value}${suitSymbols[card.suit] || ''}`;
   }
 
+  // Format landing effects for display
+  const formattedEffects = landingEffects.map(effect => {
+    const targetName = gameState.players[effect.targetPlayer]?.name || effect.targetPlayer;
+    if (effect.type === 'teammate') {
+      return { targetName, result: 'sent to home entrance' };
+    } else {
+      return { targetName, result: 'sent back to start' };
+    }
+  });
+
   const logEntry = {
     player: playerName,
     card: cardDisplay,
+    action: action, // 'played' or 'discarded'
+    landingEffects: formattedEffects,
     timestamp: Date.now()
   };
 
   gameState.movesLog.unshift(logEntry); // Add to front
-  console.log(`Move logged: ${playerName} played ${cardDisplay}, total moves: ${gameState.movesLog.length}`);
+  console.log(`Move logged: ${playerName} ${action} ${cardDisplay}, effects: ${formattedEffects.length}, total moves: ${gameState.movesLog.length}`);
 
   // Keep only last 20 moves
   if (gameState.movesLog.length > 20) {
@@ -890,19 +905,22 @@ io.on('connection', (socket) => {
       }
     }
 
+    // Reset landing effects before processing
+    currentMoveLandingEffects = [];
     const result = moveForward(marbleOwner, moveData, moveData.spaces);
-    
+
     if (result.success) {
       const totalSpaces = cardType === 7 ? 7 : 9;
       const remainingSpaces = totalSpaces - moveData.spaces;
-      
+
       // If used all spaces (for 7 card), complete immediately
       if (remainingSpaces === 0) {
         // Remove card from hand and add to player's discard pile
         const card = player.hand.splice(cardIndex, 1)[0];
         player.discardPile.push(card);
+        addMoveToLog(position, card, 'played', currentMoveLandingEffects);
         dealCards(position, 1);
-        
+
         // Clear any pending state
         gameState.pendingSplitMove = null;
 
@@ -983,6 +1001,8 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Reset landing effects before processing second part
+    currentMoveLandingEffects = [];
     let result;
     if (pending.cardType === 7) {
       result = moveForward(marbleOwner, moveData, pending.remainingSpaces);
@@ -993,6 +1013,7 @@ io.on('connection', (socket) => {
     if (result.success) {
       const card = player.hand.splice(pending.cardIndex, 1)[0];
       player.discardPile.push(card);
+      addMoveToLog(position, card, 'played', currentMoveLandingEffects);
       dealCards(position, 1);
       
       gameState.pendingSplitMove = null;
@@ -1041,12 +1062,15 @@ io.on('connection', (socket) => {
 
     const card = player.hand[cardIndex];
     console.log(`[playCard] ${position} playing ${card.value} of ${card.suit}`);
+
+    // Reset landing effects before processing
+    currentMoveLandingEffects = [];
     const result = processCardPlay(position, card, moveData);
 
     if (result.success) {
       player.hand.splice(cardIndex, 1);
       player.discardPile.push(card);
-      addMoveToLog(position, card);
+      addMoveToLog(position, card, 'played', currentMoveLandingEffects);
       dealCards(position, 1);
 
       if (checkWinCondition(position)) {
@@ -1099,7 +1123,7 @@ io.on('connection', (socket) => {
     const card = player.hand.splice(cardIndex, 1)[0];
     console.log(`[discardCard] ${position} discarding ${card.value} of ${card.suit} (no legal plays available)`);
     player.discardPile.push(card);
-    addMoveToLog(position, card);
+    addMoveToLog(position, card, 'discarded', []);
     dealCards(position, 1);
 
     gameState.pendingSplitMove = null;
@@ -1517,6 +1541,7 @@ function handleLanding(landingPlayer, targetPlayer, targetMarbleId) {
     const occupant = getMarbleOnTrack(homeEntry);
 
     targetMarble.position = homeEntry;
+    currentMoveLandingEffects.push({ targetPlayer, type: 'teammate' });
 
     // If there's an occupant at the home entry, trigger chain reaction
     if (occupant) {
@@ -1528,6 +1553,7 @@ function handleLanding(landingPlayer, targetPlayer, targetMarbleId) {
     targetMarble.location = 'start';
     targetMarble.position = startIndex;
     gameState.board[targetPlayer].start[startIndex].marble = targetPlayer;
+    currentMoveLandingEffects.push({ targetPlayer, type: 'enemy' });
   }
 }
 

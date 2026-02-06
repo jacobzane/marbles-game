@@ -2410,7 +2410,20 @@ function renderMovesLog() {
     gameState.movesLog.forEach(entry => {
         const moveEntry = document.createElement('div');
         moveEntry.className = 'move-entry';
-        moveEntry.innerHTML = `<span class="move-entry-player">${entry.player}:</span> played ${entry.card}`;
+
+        // Build the main action text
+        const action = entry.action || 'played';
+        let text = `<span class="move-entry-player">${entry.player}:</span> ${action} ${entry.card}`;
+
+        // Add landing effects if any
+        if (entry.landingEffects && entry.landingEffects.length > 0) {
+            const effectsText = entry.landingEffects.map(effect => {
+                return `${effect.targetName} ${effect.result}`;
+            }).join(', ');
+            text += ` <span class="move-effect">→ ${effectsText}</span>`;
+        }
+
+        moveEntry.innerHTML = text;
         movesLogContent.appendChild(moveEntry);
     });
 }

@@ -426,6 +426,12 @@ body {
     margin-right: 5px;
 }
 
+.move-effect {
+    color: #ffa500;
+    font-style: italic;
+    font-size: 0.8rem;
+}
+
 /* Debug Panel */
 .debug-panel {
     position: fixed;
