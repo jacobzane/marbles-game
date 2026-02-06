@@ -65,6 +65,17 @@ if (movesLogToggle && movesLogPanel) {
     });
 }
 
+// Debug panel elements
+const debugPanelToggle = document.getElementById('debugPanelToggle');
+const debugPanelContent = document.getElementById('debugPanelContent');
+
+// Toggle debug panel
+if (debugPanelToggle && debugPanelContent) {
+    debugPanelToggle.addEventListener('click', () => {
+        debugPanelContent.classList.toggle('visible');
+    });
+}
+
 // Password submission
 passwordSubmitBtn.addEventListener('click', () => {
     const password = gamePasswordInput.value.trim();
@@ -1507,15 +1518,23 @@ function detectMarbleChanges(oldPositions, newPositions) {
 
 // Determine animation type based on move characteristics
 function categorizeMove(change) {
-    const { from, to } = change;
+    const { from, to, player } = change;
 
     // If marble was sent back to start, it's a landing effect (direct line)
     if (to.location === 'start' && from.location === 'track') {
         return 'direct'; // Marble got knocked back
     }
 
-    // Track to track movement - slide along track
+    // Track to track movement
     if (from.location === 'track' && to.location === 'track') {
+        // Check if this is a teammate bump (marble sent to its own home entry)
+        // This happens when landing on a teammate - they go directly to their home entry
+        const homeEntry = gameState.board[player]?.homeEntry;
+        if (to.position === homeEntry && from.position !== homeEntry) {
+            // Likely a teammate bump - use direct line animation
+            return 'direct';
+        }
+        // Regular track movement - slide along track
         return 'track';
     }
 
@@ -1868,9 +1887,8 @@ function renderBoard() {
                 cy: startY,
                 r: 15,
                 fill: 'transparent',
-                stroke: isCurrentPlayer ? '#FFD700' : getPlayerColor(pos),
-                'stroke-width': isCurrentPlayer ? 4 : 2,
-                filter: isCurrentPlayer ? 'url(#goldGlow)' : ''
+                stroke: getPlayerColor(pos),
+                'stroke-width': 2
             });
             svg.appendChild(startCircle);
 
@@ -2004,14 +2022,25 @@ function renderBoard() {
                 textRotation = 90;
             }
 
+            // Determine fill color: gold for current player or finished, otherwise player color
+            let nameFill = getPlayerColor(pos);
+            let nameFilter = '';
+            if (isCurrentPlayer) {
+                nameFill = '#FFD700';
+                nameFilter = 'url(#goldGlow)';
+            } else if (playerFinished) {
+                nameFill = '#FFD700';
+            }
+
             const nameLabel = createSVGElement('text', {
                 x: labelX,
                 y: labelY,
                 'text-anchor': 'middle',
                 'dominant-baseline': 'middle',
-                fill: playerFinished ? '#FFD700' : getPlayerColor(pos),
+                fill: nameFill,
                 'font-size': '20',
                 'font-weight': 'bold',
+                filter: nameFilter,
                 transform: textRotation !== 0 ? `rotate(${textRotation}, ${labelX}, ${labelY})` : ''
             });
             nameLabel.textContent = gameState.players[pos].name + (playerFinished ? ' ✓' : '');
@@ -2191,9 +2220,8 @@ function renderBoardWithHiddenMarbles(hiddenMarbles) {
                 cy: startY,
                 r: 15,
                 fill: 'transparent',
-                stroke: isCurrentPlayer ? '#FFD700' : getPlayerColor(pos),
-                'stroke-width': isCurrentPlayer ? 4 : 2,
-                filter: isCurrentPlayer ? 'url(#goldGlow)' : ''
+                stroke: getPlayerColor(pos),
+                'stroke-width': 2
             });
             svg.appendChild(startCircle);
 
@@ -2288,14 +2316,25 @@ function renderBoardWithHiddenMarbles(hiddenMarbles) {
                 textRotation = 90;
             }
 
+            // Determine fill color: gold for current player or finished, otherwise player color
+            let nameFill = getPlayerColor(pos);
+            let nameFilter = '';
+            if (isCurrentPlayer) {
+                nameFill = '#FFD700';
+                nameFilter = 'url(#goldGlow)';
+            } else if (playerFinished) {
+                nameFill = '#FFD700';
+            }
+
             const nameLabel = createSVGElement('text', {
                 x: labelX,
                 y: labelY,
                 'text-anchor': 'middle',
                 'dominant-baseline': 'middle',
-                fill: playerFinished ? '#FFD700' : getPlayerColor(pos),
+                fill: nameFill,
                 'font-size': '20',
                 'font-weight': 'bold',
+                filter: nameFilter,
                 transform: textRotation !== 0 ? `rotate(${textRotation}, ${labelX}, ${labelY})` : ''
             });
             nameLabel.textContent = gameState.players[pos].name + (playerFinished ? ' ✓' : '');
