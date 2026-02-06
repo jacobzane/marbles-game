@@ -735,12 +735,47 @@ function canMove7Card(position) {
   return false;
 }
 
+// Check if path is blocked, but exclude a specific marble that will move away
+function isPathBlockedExcluding(player, startPos, endPos, direction, excludeOwner, excludeMarbleId) {
+  const excludeMarble = excludeOwner && excludeMarbleId ?
+    gameState.players[excludeOwner].marbles[excludeMarbleId] : null;
+  const excludePos = excludeMarble && excludeMarble.location === 'track' ? excludeMarble.position : -1;
+
+  if (direction === 'forward') {
+    let current = (startPos + 1) % 72;
+    while (current !== endPos) {
+      if (current !== excludePos) {
+        const occupant = getMarbleOnTrack(current);
+        if (occupant && occupant.player === player) {
+          return true;
+        }
+      }
+      current = (current + 1) % 72;
+    }
+  } else {
+    let current = startPos - 1;
+    if (current < 0) current += 72;
+    while (current !== endPos) {
+      if (current !== excludePos) {
+        const occupant = getMarbleOnTrack(current);
+        if (occupant && occupant.player === player) {
+          return true;
+        }
+      }
+      current = current - 1;
+      if (current < 0) current += 72;
+    }
+  }
+  return false;
+}
+
 // Check if player can play a 9 card
 function canMove9Card(position) {
   const controllableMarbles = getControllableMarbles(position);
 
   // Need: one marble for forward (1-8 spaces) AND another marble on track for backward
   // The tricky part: after first marble moves, we need a DIFFERENT marble for backward
+  // IMPORTANT: The first marble moving might unblock the backward path for the second marble
 
   // First, check if we have at least 2 marbles, or 1 marble + teammate marbles if we'd finish
   const trackMarbles = controllableMarbles.filter(m =>
@@ -756,6 +791,11 @@ function canMove9Card(position) {
       if (canMarbleMoveForward(owner, marbleId, spaces)) {
         // Check if there's a DIFFERENT marble on track for backward
         const remainingSpaces = 9 - spaces;
+        const firstMarble = gameState.players[owner].marbles[marbleId];
+
+        // Check if first marble will leave the track (enter home)
+        const willEnterHome = firstMarble.location === 'track' &&
+          willMarbleEnterHome(owner, marbleId, spaces);
 
         for (let track of trackMarbles) {
           // Must be different marble
@@ -766,29 +806,47 @@ function canMove9Card(position) {
           let backPos = trackMarble.position - remainingSpaces;
           if (backPos < 0) backPos += 72;
 
-          // Simple check - is path clear and destination valid?
-          if (!isPathBlocked(track.owner, trackMarble.position, backPos, 'backward')) {
+          // Check path - if first marble enters home, exclude it from blocking check
+          let pathClear;
+          if (willEnterHome) {
+            pathClear = !isPathBlockedExcluding(track.owner, trackMarble.position, backPos, 'backward', owner, marbleId);
+          } else {
+            pathClear = !isPathBlocked(track.owner, trackMarble.position, backPos, 'backward');
+          }
+
+          if (pathClear) {
+            // Also check destination isn't blocked (excluding first marble if it's leaving)
             const occupant = getMarbleOnTrack(backPos);
-            if (!occupant || occupant.player !== track.owner) {
-              const teammate = getTeammate(track.owner);
-              if (occupant && occupant.player === teammate && !canLandOnTeammate(teammate)) {
-                continue;
+            const destClear = !occupant || occupant.player !== track.owner ||
+              (willEnterHome && occupant.player === owner && occupant.marbleId === marbleId);
+
+            if (destClear) {
+              // Check if occupant is actually the first marble leaving
+              if (occupant && willEnterHome && occupant.player === owner) {
+                // First marble is at destination but will move away - OK
+                return true;
               }
-              return true;
+              if (!occupant || occupant.player !== track.owner) {
+                const teammate = getTeammate(track.owner);
+                if (occupant && occupant.player === teammate && !canLandOnTeammate(teammate)) {
+                  continue;
+                }
+                return true;
+              }
             }
           }
         }
 
         // Also check if moving this marble would finish the player, making teammate marbles available
-        const marble = gameState.players[owner].marbles[marbleId];
-        if (marble.location === 'track' && wouldBeFinishedAfterMove(owner, marbleId, true)) {
+        if (firstMarble.location === 'track' && wouldBeFinishedAfterMove(owner, marbleId, true)) {
           const teammate = getTeammate(position);
           for (let mId in gameState.players[teammate].marbles) {
             const tMarble = gameState.players[teammate].marbles[mId];
             if (tMarble.location === 'track') {
               let backPos = tMarble.position - remainingSpaces;
               if (backPos < 0) backPos += 72;
-              if (!isPathBlocked(teammate, tMarble.position, backPos, 'backward')) {
+              // Exclude the first marble since it's entering home
+              if (!isPathBlockedExcluding(teammate, tMarble.position, backPos, 'backward', owner, marbleId)) {
                 const occupant = getMarbleOnTrack(backPos);
                 if (!occupant || occupant.player !== teammate) {
                   return true;
@@ -800,6 +858,30 @@ function canMove9Card(position) {
       }
     }
   }
+  return false;
+}
+
+// Helper to check if a marble will enter home with given forward spaces
+function willMarbleEnterHome(owner, marbleId, spaces) {
+  const marble = gameState.players[owner].marbles[marbleId];
+  if (marble.location !== 'track') return false;
+
+  const homeEntry = gameState.board[owner].homeEntry;
+  const startPos = marble.position;
+
+  // Check if on home entry
+  if (startPos === homeEntry) {
+    return spaces <= 5;
+  }
+
+  // Check if crosses home entry
+  for (let i = 1; i <= spaces; i++) {
+    if ((startPos + i) % 72 === homeEntry) {
+      const spacesIntoHome = spaces - i;
+      return spacesIntoHome > 0 && spacesIntoHome <= 5;
+    }
+  }
+
   return false;
 }
 
