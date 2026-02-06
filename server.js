@@ -656,14 +656,82 @@ function canJokerMove(position) {
 function canMove7Card(position) {
   const controllableMarbles = getControllableMarbles(position);
 
-  // Need at least one marble that can move forward any amount 1-7
+  // Collect marbles that can move and how far they can move
+  const moveableMarbles = [];
   for (let { owner, marbleId } of controllableMarbles) {
+    const marble = gameState.players[owner].marbles[marbleId];
+    if (marble.location !== 'track' && marble.location !== 'home') continue;
+
+    const possibleMoves = [];
     for (let spaces = 1; spaces <= 7; spaces++) {
       if (canMarbleMoveForward(owner, marbleId, spaces)) {
-        return true;
+        possibleMoves.push(spaces);
+      }
+    }
+    if (possibleMoves.length > 0) {
+      moveableMarbles.push({ owner, marbleId, possibleMoves });
+    }
+  }
+
+  if (moveableMarbles.length === 0) return false;
+
+  // Case 1: Only 1 moveable marble - must be able to move exactly 7
+  if (moveableMarbles.length === 1) {
+    // Check if player would finish after this move and have teammate marbles available
+    const { owner, marbleId, possibleMoves } = moveableMarbles[0];
+
+    // Can the single marble move exactly 7?
+    if (possibleMoves.includes(7)) {
+      return true;
+    }
+
+    // Check if moving this marble into home would finish the player,
+    // making teammate's marbles available for the remainder
+    for (let firstSpaces of possibleMoves) {
+      if (firstSpaces >= 7) continue; // No remainder needed
+
+      const marble = gameState.players[owner].marbles[marbleId];
+      if (marble.location === 'track' && wouldBeFinishedAfterMove(owner, marbleId, true)) {
+        const teammate = getTeammate(position);
+        const remainingSpaces = 7 - firstSpaces;
+
+        // Check if any teammate marble can move the remainder
+        for (let tMarbleId in gameState.players[teammate].marbles) {
+          const tMarble = gameState.players[teammate].marbles[tMarbleId];
+          if (tMarble.location !== 'track' && tMarble.location !== 'home') continue;
+
+          if (canMarbleMoveForward(teammate, tMarbleId, remainingSpaces)) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  // Case 2: 2+ moveable marbles - check if any combination totals 7
+  // First, check if any single marble can move exactly 7
+  for (let marble of moveableMarbles) {
+    if (marble.possibleMoves.includes(7)) {
+      return true;
+    }
+  }
+
+  // Check split combinations between two different marbles
+  for (let i = 0; i < moveableMarbles.length; i++) {
+    for (let j = 0; j < moveableMarbles.length; j++) {
+      if (i === j) continue; // Must be different marbles
+
+      for (let firstMove of moveableMarbles[i].possibleMoves) {
+        const remainder = 7 - firstMove;
+        if (remainder > 0 && remainder <= 7 && moveableMarbles[j].possibleMoves.includes(remainder)) {
+          return true;
+        }
       }
     }
   }
+
   return false;
 }
 
