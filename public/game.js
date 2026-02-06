@@ -26,7 +26,8 @@ let distanceCountState = {
 let isAnimating = false;
 let animationQueue = [];
 let previousMarblePositions = null; // To track position changes
-let visualCurrentPlayerIndex = null; // Tracks whose turn it VISUALLY appears to be (delays during animations)
+let turnGlowPlayerIndex = null; // Which player's turn glow to show (delayed for smooth animations)
+let turnGlowTimeout = null; // Timeout for delayed turn glow updates
 
 // DOM Elements
 const passwordScreen = document.getElementById('passwordScreen');
@@ -127,7 +128,7 @@ socket.on('gameStarted', (state) => {
     selectedCard = null;
     selectedMarbles = [];
     selectedStartingPlayer = null;
-    visualCurrentPlayerIndex = state.currentPlayerIndex; // Initialize visual turn
+    turnGlowPlayerIndex = state.currentPlayerIndex; // Initialize turn glow immediately on game start
     showScreen('gameScreen');
     renderGame();
     updateTurnGlow(); // Update the bottom screen glow
@@ -166,8 +167,19 @@ socket.on('gameStateUpdate', (state) => {
     const newPositions = captureMarblePositions();
     const changes = detectMarbleChanges(oldPositions, newPositions);
 
+    // Schedule turn glow update with delay (1.5s) so all clients stay in sync
+    // Clear any pending turn glow update
+    if (turnGlowTimeout) {
+        clearTimeout(turnGlowTimeout);
+    }
+    // Delay turn glow update by 1.5 seconds to allow animations to complete
+    turnGlowTimeout = setTimeout(() => {
+        turnGlowPlayerIndex = gameState.currentPlayerIndex;
+        renderBoard(); // Re-render board with updated turn glow
+        updateTurnGlow();
+    }, 1500);
+
     if (changes.length > 0 && !isAnimating) {
-        // Don't update visual turn yet - wait for animations to complete
         // Hide marbles that are moving (they'll be animated)
         renderBoardWithHiddenMarbles(changes);
         renderHand();
@@ -175,17 +187,14 @@ socket.on('gameStateUpdate', (state) => {
         renderMovesLog();
         renderDebugPanel();
 
-        // Play animations, then update visual turn and re-render
+        // Play animations, then re-render
         playAnimations(changes, () => {
-            // Animation complete - now update visual turn
-            visualCurrentPlayerIndex = gameState.currentPlayerIndex;
-            updateTurnGlow();
+            // Animation complete - re-render the board
+            renderBoard();
         });
     } else {
-        // No animation - update visual turn immediately
-        visualCurrentPlayerIndex = gameState.currentPlayerIndex;
+        // No animation - render immediately (turn glow still delayed)
         renderGame();
-        updateTurnGlow();
     }
 });
 
@@ -446,7 +455,7 @@ function updateTurnGlow() {
     }
 
     // Use visual turn index for consistency with the board glow
-    const visualTurnIndex = visualCurrentPlayerIndex !== null ? visualCurrentPlayerIndex : gameState.currentPlayerIndex;
+    const visualTurnIndex = turnGlowPlayerIndex !== null ? turnGlowPlayerIndex : gameState.currentPlayerIndex;
     const visualCurrentPlayer = gameState.playerOrder[visualTurnIndex];
     const isMyTurn = visualCurrentPlayer === myPosition;
 
@@ -1844,8 +1853,8 @@ function renderBoard() {
             { inward: -crossSpacing, left: 0 }
         ];
         
-        // Use visualCurrentPlayerIndex for the turn glow (delays during animations)
-        const visualTurnIndex = visualCurrentPlayerIndex !== null ? visualCurrentPlayerIndex : gameState.currentPlayerIndex;
+        // Use turnGlowPlayerIndex for the turn glow (delays during animations)
+        const visualTurnIndex = turnGlowPlayerIndex !== null ? turnGlowPlayerIndex : gameState.currentPlayerIndex;
         const visualCurrentPlayer = gameState.playerOrder[visualTurnIndex];
         const isCurrentPlayer = pos === visualCurrentPlayer;
 
@@ -2167,8 +2176,8 @@ function renderBoardWithHiddenMarbles(hiddenMarbles) {
             { inward: -crossSpacing, left: 0 }
         ];
 
-        // Use visualCurrentPlayerIndex for the turn glow (delays during animations)
-        const visualTurnIndex = visualCurrentPlayerIndex !== null ? visualCurrentPlayerIndex : gameState.currentPlayerIndex;
+        // Use turnGlowPlayerIndex for the turn glow (delays during animations)
+        const visualTurnIndex = turnGlowPlayerIndex !== null ? turnGlowPlayerIndex : gameState.currentPlayerIndex;
         const visualCurrentPlayer = gameState.playerOrder[visualTurnIndex];
         const isCurrentPlayer = pos === visualCurrentPlayer;
 
