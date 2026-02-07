@@ -754,7 +754,19 @@ function isPathBlocked(marbleOwner, startPos, endPos, direction = 'forward') {
 
 function isHomePathBlocked(player, startHomePos, endHomePos) {
     for (let i = startHomePos + 1; i < endHomePos; i++) {
-        if (gameState.board[player].home[i].marble !== null) {
+        // Use marble objects as source of truth instead of board state
+        if (isHomePositionOccupied(player, i)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Check if a specific home position is occupied by checking marble objects (source of truth)
+function isHomePositionOccupied(player, homeIndex) {
+    for (let marbleId in gameState.players[player].marbles) {
+        const marble = gameState.players[player].marbles[marbleId];
+        if (marble.location === 'home' && marble.position === homeIndex) {
             return true;
         }
     }
@@ -763,7 +775,8 @@ function isHomePathBlocked(player, startHomePos, endHomePos) {
 
 function isHomePathBlockedFromStart(player, targetHomeIndex) {
     for (let i = 0; i < targetHomeIndex; i++) {
-        if (gameState.board[player].home[i].marble !== null) {
+        // Use marble objects as source of truth instead of board state
+        if (isHomePositionOccupied(player, i)) {
             return true;
         }
     }
@@ -782,21 +795,23 @@ function getValidDestinations(marbleOwner, marbleId, maxSpaces, direction = 'for
         for (let spaces = 1; spaces <= maxSpaces; spaces++) {
             const newHomePos = currentHomePos + spaces;
             if (newHomePos > 4) continue;
-            
+
+            // Check path is clear using marble objects as source of truth
             let blocked = false;
             for (let i = currentHomePos + 1; i < newHomePos; i++) {
-                if (gameState.board[marbleOwner].home[i].marble !== null) {
+                if (isHomePositionOccupied(marbleOwner, i)) {
                     blocked = true;
                     break;
                 }
             }
             if (blocked) continue;
-            
-            if (gameState.board[marbleOwner].home[newHomePos].marble !== null) continue;
-            
-            validPositions.push({ 
-                type: 'home', 
-                spaces: spaces, 
+
+            // Check destination using marble objects as source of truth
+            if (isHomePositionOccupied(marbleOwner, newHomePos)) continue;
+
+            validPositions.push({
+                type: 'home',
+                spaces: spaces,
                 homeIndex: newHomePos,
                 enterHome: true,
                 marbleOwner: marbleOwner
@@ -832,9 +847,9 @@ function getValidDestinations(marbleOwner, marbleId, maxSpaces, direction = 'for
                 
                 if (spacesIntoHome > 0 && spacesIntoHome <= 5) {
                     const homeIndex = spacesIntoHome - 1;
-                    if (!isHomePathBlockedFromStart(marbleOwner, homeIndex) && 
-                        gameState.board[marbleOwner].home[homeIndex].marble === null) {
-                        validPositions.push({ 
+                    if (!isHomePathBlockedFromStart(marbleOwner, homeIndex) &&
+                        !isHomePositionOccupied(marbleOwner, homeIndex)) {
+                        validPositions.push({
                             type: 'home', 
                             spaces: spaces, 
                             homeIndex: homeIndex,
@@ -1111,16 +1126,16 @@ function canComplete7CardSplit(firstMarbleOwner, firstMarbleId, firstSpaces) {
                         blocked = true;
                         break;
                     }
-                    // Check if another marble is here
-                    if (gameState.board[marble.owner].home[i].marble !== null) {
+                    // Check if another marble is here (use marble objects as source of truth)
+                    if (isHomePositionOccupied(marble.owner, i)) {
                         blocked = true;
                         break;
                     }
                 }
 
                 if (!blocked) {
-                    // Check if destination is clear
-                    const destOccupied = gameState.board[marble.owner].home[newHomePos].marble !== null;
+                    // Check if destination is clear (use marble objects as source of truth)
+                    const destOccupied = isHomePositionOccupied(marble.owner, newHomePos);
                     const firstMarbleAtDest = firstMarbleNewLocation === 'home' &&
                         firstMarbleNewPosition === newHomePos &&
                         marble.owner === firstMarbleOwner;
@@ -1224,7 +1239,7 @@ function canComplete7CardSplit(firstMarbleOwner, firstMarbleId, firstSpaces) {
                         marble.owner === firstMarbleOwner) {
                         // First marble will be here, can't enter
                     } else if (!isHomePathBlockedFromStart(marble.owner, homeIndex) &&
-                               gameState.board[marble.owner].home[homeIndex].marble === null) {
+                               !isHomePositionOccupied(marble.owner, homeIndex)) {
                         return true;
                     }
                 }
@@ -1265,8 +1280,8 @@ function getHomeChoiceOptions(marbleOwner, marbleId, spaces) {
     let homeIndex = -1;
     if (spacesIntoHome > 0 && spacesIntoHome <= 5) {
         homeIndex = spacesIntoHome - 1;
-        if (!isHomePathBlockedFromStart(marbleOwner, homeIndex) && 
-            gameState.board[marbleOwner].home[homeIndex].marble === null) {
+        if (!isHomePathBlockedFromStart(marbleOwner, homeIndex) &&
+            !isHomePositionOccupied(marbleOwner, homeIndex)) {
             canEnterHome = true;
         }
     }
@@ -1962,8 +1977,9 @@ function renderBoard() {
             }
             
             svg.appendChild(homeCircle);
-            
-            if (gameState.board[pos].home[i].marble) {
+
+            // Use marble objects as source of truth for rendering
+            if (isHomePositionOccupied(pos, i)) {
                 const marbleId = getMarbleIdAtHomePosition(pos, i);
                 
                 if (marbleId) {
@@ -2273,7 +2289,8 @@ function renderBoardWithHiddenMarbles(hiddenMarbles) {
 
             svg.appendChild(homeCircle);
 
-            if (gameState.board[pos].home[i].marble) {
+            // Use marble objects as source of truth for rendering
+            if (isHomePositionOccupied(pos, i)) {
                 const marbleId = getMarbleIdAtHomePosition(pos, i);
 
                 if (marbleId && !hiddenSet.has(`${pos}-${marbleId}`)) {
