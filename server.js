@@ -13,17 +13,13 @@ let tables = {};  // Map of tableId -> gameState
 let playerToTable = {};  // Map of socketId -> tableId
 let disconnectionTimeouts = {};  // Map of `${tableId}-${position}` -> timeout
 
-// Generate a unique 6-character table ID
+// Generate sequential table ID ("Table 1", "Table 2", etc.)
+let nextTableNumber = 1;
 function generateTableId() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';  // Avoid confusing chars
-  let id;
-  do {
-    id = '';
-    for (let i = 0; i < 6; i++) {
-      id += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-  } while (tables[id]);  // Ensure unique
-  return id;
+  while (tables[`Table ${nextTableNumber}`]) {
+    nextTableNumber++;
+  }
+  return `Table ${nextTableNumber++}`;
 }
 
 // Create a new table/game state

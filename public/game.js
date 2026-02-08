@@ -353,7 +353,7 @@ function renderTableList(tables) {
         return `
             <div class="table-card" data-table-id="${table.id}">
                 <div class="table-card-header">
-                    <span class="table-id">Table ${table.id}</span>
+                    <span class="table-id">${table.id}</span>
                     <span class="table-status ${statusClass}">${statusText}</span>
                 </div>
                 <div class="table-card-host">Host: ${table.hostName}</div>
@@ -389,7 +389,7 @@ function renderTableList(tables) {
 
 function showSeatSelection(tableId) {
     const seatTableEl = document.getElementById('seatSelectTable');
-    if (seatTableEl) seatTableEl.textContent = `Table: ${tableId}`;
+    if (seatTableEl) seatTableEl.textContent = tableId;
     showScreen('seatSelectScreen');
 
     // We'll update seat availability from tableList data when it arrives
