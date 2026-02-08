@@ -461,10 +461,8 @@ function canPlayCard(gameState, position, card) {
   }
 
   if (cardValue === 'Joker') {
-    // Joker: Enter from start OR land on any other player's marble
-    if (canEnterFromStart(gameState, position)) return true;
-    if (canJokerMove(gameState, position)) return true;
-    return false;
+    // Joker: land on any other player's marble (source can be from start or track)
+    return canJokerMove(gameState, position);
   }
 
   if (cardValue === 'J') {
