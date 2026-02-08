@@ -19,18 +19,44 @@
             </div>
         </div>
 
-        <!-- Login Screen -->
-        <div id="loginScreen" class="screen">
-            <div class="login-container">
+        <!-- Table Lobby Screen -->
+        <div id="tableLobbyScreen" class="screen">
+            <div class="lobby-container table-lobby">
                 <h1>Minnesota Marbles</h1>
-                <p>Team game: Seats 1 & 3 vs Seats 2 & 4</p>
-                <input type="text" id="playerName" placeholder="Enter your name" maxlength="20">
-                <div class="position-select">
-                    <button class="position-btn" data-position="Seat1">Seat 1</button>
-                    <button class="position-btn" data-position="Seat2">Seat 2</button>
-                    <button class="position-btn" data-position="Seat3">Seat 3</button>
-                    <button class="position-btn" data-position="Seat4">Seat 4</button>
+                <p>Join a table or create a new one</p>
+
+                <div class="table-lobby-name">
+                    <input type="text" id="playerName" placeholder="Enter your name" maxlength="20">
                 </div>
+
+                <div class="table-lobby-actions">
+                    <button id="createTableBtn" class="btn btn-primary">Create New Table</button>
+                    <button id="refreshTablesBtn" class="btn btn-secondary">Refresh</button>
+                </div>
+
+                <div id="tableList" class="table-list">
+                    <div class="table-list-empty">No tables available. Create one!</div>
+                </div>
+
+                <div id="tableLobbyError" class="error-message"></div>
+            </div>
+        </div>
+
+        <!-- Seat Selection Screen (after picking a table) -->
+        <div id="seatSelectScreen" class="screen">
+            <div class="lobby-container">
+                <h1>Choose a Seat</h1>
+                <p>Team game: Seats 1 & 3 vs Seats 2 & 4</p>
+                <p id="seatSelectTable" class="table-id-display"></p>
+                <div class="position-select">
+                    <div class="team-label">Team 1</div>
+                    <button class="position-btn seat-btn" data-position="Seat1">Seat 1 <span class="seat-status" id="seatStatus1"></span></button>
+                    <button class="position-btn seat-btn" data-position="Seat3">Seat 3 <span class="seat-status" id="seatStatus3"></span></button>
+                    <div class="team-label">Team 2</div>
+                    <button class="position-btn seat-btn" data-position="Seat2">Seat 2 <span class="seat-status" id="seatStatus2"></span></button>
+                    <button class="position-btn seat-btn" data-position="Seat4">Seat 4 <span class="seat-status" id="seatStatus4"></span></button>
+                </div>
+                <button id="backToTablesBtn" class="btn btn-secondary">Back to Tables</button>
                 <div id="loginError" class="error-message"></div>
             </div>
         </div>
@@ -61,6 +87,7 @@
                 </div>
 
                 <p class="waiting-status" id="waitingStatus">0 of 4 players joined</p>
+                <button id="leaveTableBtn" class="btn btn-secondary" style="margin-top: 20px;">Leave Table</button>
             </div>
         </div>
 
@@ -171,7 +198,14 @@
             <div class="win-container">
                 <h1>Game Over!</h1>
                 <h2 id="winnerText"></h2>
-                <button id="newGameBtn" class="btn btn-primary">New Game</button>
+                <div id="hostWinControls" class="host-win-controls" style="display:none;">
+                    <p>As host, choose what to do next:</p>
+                    <button id="restartGameBtn" class="btn btn-primary">Play Again (Same Table)</button>
+                    <button id="closeTableBtn" class="btn btn-secondary">Close Table</button>
+                </div>
+                <div id="nonHostWinMessage" class="non-host-win-message" style="display:none;">
+                    <p>Waiting for host to decide...</p>
+                </div>
             </div>
         </div>
     </div>

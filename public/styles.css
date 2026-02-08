@@ -838,3 +838,193 @@ body {
 .turn-glow.active {
     opacity: 1;
 }
+
+/* ============ TABLE LOBBY ============ */
+
+.table-lobby {
+    max-width: 600px;
+    width: 90%;
+}
+
+.table-lobby-name {
+    margin-bottom: 20px;
+}
+
+.table-lobby-name input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 1rem;
+    outline: none;
+}
+
+.table-lobby-name input:focus {
+    border-color: #4CAF50;
+}
+
+.table-lobby-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.table-lobby-actions .btn {
+    flex: 1;
+}
+
+.table-list {
+    max-height: 400px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.table-list-empty {
+    text-align: center;
+    color: #888;
+    padding: 40px 20px;
+    font-style: italic;
+}
+
+.table-card {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    padding: 16px;
+    transition: border-color 0.2s;
+}
+
+.table-card:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.table-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.table-id {
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.table-status {
+    font-size: 0.85rem;
+    padding: 2px 10px;
+    border-radius: 12px;
+}
+
+.status-waiting {
+    background: rgba(76, 175, 80, 0.3);
+    color: #81C784;
+}
+
+.status-ingame {
+    background: rgba(255, 152, 0, 0.3);
+    color: #FFB74D;
+}
+
+.table-card-host {
+    color: #aaa;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.table-card-seats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.table-seat {
+    font-size: 0.8rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.table-seat.taken {
+    color: #FFB74D;
+}
+
+.table-seat.open {
+    color: #81C784;
+}
+
+.table-join-btn {
+    width: 100%;
+    padding: 8px !important;
+    font-size: 0.9rem !important;
+}
+
+.table-join-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Seat Selection Screen */
+.table-id-display {
+    color: #81C784;
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.team-label {
+    width: 100%;
+    text-align: center;
+    color: #aaa;
+    font-size: 0.9rem;
+    margin-top: 10px;
+    margin-bottom: 4px;
+}
+
+.seat-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.seat-btn.taken {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.seat-status {
+    font-size: 0.8rem;
+    color: #aaa;
+    font-weight: normal;
+}
+
+/* Win Screen Host Controls */
+.host-win-controls {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+}
+
+.host-win-controls p {
+    color: #aaa;
+    margin-bottom: 5px;
+}
+
+.non-host-win-message {
+    margin-top: 20px;
+    color: #aaa;
+    font-style: italic;
+}
+
+#backToTablesBtn {
+    margin-top: 20px;
+}

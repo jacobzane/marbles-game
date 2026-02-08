@@ -2,6 +2,8 @@ const socket = io();
 
 let gameState = null;
 let myPosition = null;
+let myPlayerName = null;
+let currentTableId = null;
 let selectedCard = null;
 let selectedMarbles = [];
 
@@ -31,7 +33,8 @@ let turnGlowTimeout = null; // Timeout for delayed turn glow updates
 
 // DOM Elements
 const passwordScreen = document.getElementById('passwordScreen');
-const loginScreen = document.getElementById('loginScreen');
+const tableLobbyScreen = document.getElementById('tableLobbyScreen');
+const seatSelectScreen = document.getElementById('seatSelectScreen');
 const waitingScreen = document.getElementById('waitingScreen');
 const lobbyScreen = document.getElementById('lobbyScreen');
 const gameScreen = document.getElementById('gameScreen');
@@ -40,11 +43,18 @@ const gamePasswordInput = document.getElementById('gamePassword');
 const passwordSubmitBtn = document.getElementById('passwordSubmitBtn');
 const passwordError = document.getElementById('passwordError');
 const playerNameInput = document.getElementById('playerName');
-const positionButtons = document.querySelectorAll('.position-btn');
 const loginError = document.getElementById('loginError');
 const gameBoard = document.getElementById('gameBoard');
 const playerHand = document.getElementById('playerHand');
 const discardBtn = document.getElementById('discardBtn');
+
+// Table lobby elements
+const createTableBtn = document.getElementById('createTableBtn');
+const refreshTablesBtn = document.getElementById('refreshTablesBtn');
+const tableListEl = document.getElementById('tableList');
+const tableLobbyError = document.getElementById('tableLobbyError');
+const backToTablesBtn = document.getElementById('backToTablesBtn');
+const seatButtons = document.querySelectorAll('.seat-btn');
 
 // Lobby elements
 const lobbyControls = document.getElementById('lobbyControls');
@@ -95,7 +105,8 @@ gamePasswordInput.addEventListener('keypress', (e) => {
 // Socket event listeners
 socket.on('passwordCorrect', () => {
     localStorage.setItem('gameAuthenticated', 'true');
-    showScreen('loginScreen');
+    showScreen('tableLobbyScreen');
+    socket.emit('getTables');
 });
 
 socket.on('passwordIncorrect', () => {
@@ -106,8 +117,23 @@ socket.on('passwordIncorrect', () => {
 socket.on('joinSuccess', (data) => {
     myPosition = data.position;
     gameState = data.gameState;
-    showScreen('waitingScreen');
-    updateWaitingRoom();
+    currentTableId = data.gameState.id;
+
+    // Handle reconnection to different game states
+    if (gameState.gameStarted) {
+        // Reconnecting to an active game
+        turnGlowPlayerIndex = gameState.currentPlayerIndex;
+        showScreen('gameScreen');
+        renderGame();
+        updateTurnGlow();
+    } else if (Object.keys(gameState.players).length === 4) {
+        // All 4 players, show lobby
+        showScreen('lobbyScreen');
+        updateLobbyDisplay();
+    } else {
+        showScreen('waitingScreen');
+        updateWaitingRoom();
+    }
 });
 
 socket.on('joinError', (message) => {
@@ -238,9 +264,20 @@ socket.on('splitMoveComplete', () => {
 });
 
 socket.on('gameWon', (data) => {
-    document.getElementById('winnerText').textContent = 
+    document.getElementById('winnerText').textContent =
         `${data.winner} wins! ${data.team === 'team1' ? 'Team 1 (Seats 1 & 3)' : 'Team 2 (Seats 2 & 4)'} is victorious!`;
     showScreen('winScreen');
+
+    // Show host controls for Seat1, waiting message for others
+    const hostControls = document.getElementById('hostWinControls');
+    const nonHostMessage = document.getElementById('nonHostWinMessage');
+    if (myPosition === 'Seat1') {
+        if (hostControls) hostControls.style.display = 'block';
+        if (nonHostMessage) nonHostMessage.style.display = 'none';
+    } else {
+        if (hostControls) hostControls.style.display = 'none';
+        if (nonHostMessage) nonHostMessage.style.display = 'block';
+    }
 });
 
 socket.on('error', (message) => {
@@ -264,20 +301,209 @@ socket.on('playerRemoved', (data) => {
     showNotification(`${playerName} (${position}) did not reconnect and was removed from the game.`, 'error');
 });
 
-// Position selection
-positionButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-        const position = btn.dataset.position;
+// ============ TABLE LOBBY EVENTS ============
+
+socket.on('tableListUpdated', () => {
+    // Re-fetch the table list
+    socket.emit('getTables');
+});
+
+socket.on('tableClosed', () => {
+    showNotification('The host closed the table.', 'warning');
+    currentTableId = null;
+    myPosition = null;
+    gameState = null;
+    showScreen('tableLobbyScreen');
+    socket.emit('getTables');
+});
+
+socket.on('gameRestarted', (state) => {
+    gameState = state;
+    splitMoveState = null;
+    homeChoiceState = null;
+    selectedCard = null;
+    selectedMarbles = [];
+    selectedStartingPlayer = null;
+    showScreen('lobbyScreen');
+    updateLobbyDisplay();
+});
+
+// ============ TABLE LOBBY UI ============
+
+function renderTableList(tables) {
+    if (!tableListEl) return;
+
+    if (tables.length === 0) {
+        tableListEl.innerHTML = '<div class="table-list-empty">No tables available. Create one!</div>';
+        return;
+    }
+
+    tableListEl.innerHTML = tables.map(table => {
+        const seatInfo = ['Seat1', 'Seat2', 'Seat3', 'Seat4'].map(seat => {
+            const name = table.seats[seat];
+            return `<span class="table-seat ${name ? 'taken' : 'open'}">${seat.replace('Seat', 'S')}: ${name || 'Open'}</span>`;
+        }).join('');
+
+        const statusText = table.gameStarted ? 'In Game' : `${table.playerCount}/4 Players`;
+        const statusClass = table.gameStarted ? 'status-ingame' : 'status-waiting';
+
+        return `
+            <div class="table-card" data-table-id="${table.id}">
+                <div class="table-card-header">
+                    <span class="table-id">Table ${table.id}</span>
+                    <span class="table-status ${statusClass}">${statusText}</span>
+                </div>
+                <div class="table-card-host">Host: ${table.hostName}</div>
+                <div class="table-card-seats">${seatInfo}</div>
+                <button class="btn btn-primary table-join-btn" ${table.gameStarted || table.playerCount >= 4 ? 'disabled' : ''}>
+                    ${table.gameStarted ? 'In Progress' : table.playerCount >= 4 ? 'Full' : 'Join'}
+                </button>
+            </div>
+        `;
+    }).join('');
+
+    // Attach join button listeners
+    tableListEl.querySelectorAll('.table-join-btn:not([disabled])').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tableCard = btn.closest('.table-card');
+            const tableId = tableCard.dataset.tableId;
+            const name = playerNameInput.value.trim();
+
+            if (!name) {
+                if (tableLobbyError) tableLobbyError.textContent = 'Please enter your name first';
+                return;
+            }
+
+            myPlayerName = name;
+            currentTableId = tableId;
+
+            // Fetch fresh table info and show seat selection
+            socket.emit('getTables');
+            showSeatSelection(tableId);
+        });
+    });
+}
+
+function showSeatSelection(tableId) {
+    const seatTableEl = document.getElementById('seatSelectTable');
+    if (seatTableEl) seatTableEl.textContent = `Table: ${tableId}`;
+    showScreen('seatSelectScreen');
+
+    // We'll update seat availability from tableList data when it arrives
+    // For now, use what we have from last fetch
+}
+
+function updateSeatAvailability(tables) {
+    if (!currentTableId) return;
+    const table = tables.find(t => t.id === currentTableId);
+    if (!table) return;
+
+    for (let i = 1; i <= 4; i++) {
+        const seat = `Seat${i}`;
+        const statusEl = document.getElementById(`seatStatus${i}`);
+        const btn = document.querySelector(`.seat-btn[data-position="${seat}"]`);
+        if (statusEl && btn) {
+            if (table.seats[seat]) {
+                statusEl.textContent = `(${table.seats[seat]})`;
+                btn.disabled = true;
+                btn.classList.add('taken');
+            } else {
+                statusEl.textContent = '(Open)';
+                btn.disabled = false;
+                btn.classList.remove('taken');
+            }
+        }
+    }
+}
+
+// Override tableList handler to also update seat availability
+socket.on('tableList', (tables) => {
+    renderTableList(tables);
+    updateSeatAvailability(tables);
+});
+
+// Create table button
+if (createTableBtn) {
+    createTableBtn.addEventListener('click', () => {
         const name = playerNameInput.value.trim();
-        
         if (!name) {
-            loginError.textContent = 'Please enter your name';
+            if (tableLobbyError) tableLobbyError.textContent = 'Please enter your name first';
             return;
         }
-        
-        socket.emit('joinGame', { playerName: name, position });
+        myPlayerName = name;
+        socket.emit('createTable', { playerName: name });
+    });
+}
+
+// Refresh tables button
+if (refreshTablesBtn) {
+    refreshTablesBtn.addEventListener('click', () => {
+        socket.emit('getTables');
+    });
+}
+
+// Back to tables button
+if (backToTablesBtn) {
+    backToTablesBtn.addEventListener('click', () => {
+        currentTableId = null;
+        showScreen('tableLobbyScreen');
+        socket.emit('getTables');
+    });
+}
+
+// Leave table button (from waiting room)
+const leaveTableBtn = document.getElementById('leaveTableBtn');
+if (leaveTableBtn) {
+    leaveTableBtn.addEventListener('click', () => {
+        socket.emit('leaveTable');
+        currentTableId = null;
+        myPosition = null;
+        gameState = null;
+        showScreen('tableLobbyScreen');
+        socket.emit('getTables');
+    });
+}
+
+// Seat selection buttons
+seatButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        const position = btn.dataset.position;
+
+        if (!myPlayerName) {
+            if (loginError) loginError.textContent = 'Please enter your name';
+            return;
+        }
+
+        socket.emit('joinTable', {
+            tableId: currentTableId,
+            playerName: myPlayerName,
+            position: position
+        });
     });
 });
+
+// ============ WIN SCREEN HOST CONTROLS ============
+
+const restartGameBtn = document.getElementById('restartGameBtn');
+const closeTableBtn = document.getElementById('closeTableBtn');
+
+if (restartGameBtn) {
+    restartGameBtn.addEventListener('click', () => {
+        socket.emit('hostRestartGame');
+    });
+}
+
+if (closeTableBtn) {
+    closeTableBtn.addEventListener('click', () => {
+        socket.emit('hostCloseTable');
+        currentTableId = null;
+        myPosition = null;
+        gameState = null;
+        showScreen('tableLobbyScreen');
+        socket.emit('getTables');
+    });
+}
 
 // Discard button
 discardBtn.addEventListener('click', () => {
@@ -3270,7 +3496,8 @@ setTimeout(() => {
 // Check if already authenticated on page load
 window.addEventListener('load', () => {
     if (localStorage.getItem('gameAuthenticated') === 'true') {
-        showScreen('loginScreen');
+        showScreen('tableLobbyScreen');
+        socket.emit('getTables');
     }
 });
 
