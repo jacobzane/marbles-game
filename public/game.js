@@ -264,20 +264,23 @@ socket.on('splitMoveComplete', () => {
 });
 
 socket.on('gameWon', (data) => {
-    document.getElementById('winnerText').textContent =
-        `${data.winner} wins! ${data.team === 'team1' ? 'Team 1 (Seats 1 & 3)' : 'Team 2 (Seats 2 & 4)'} is victorious!`;
-    showScreen('winScreen');
+    // Delay win screen so players can see the final move animation
+    setTimeout(() => {
+        document.getElementById('winnerText').textContent =
+            `${data.winner} wins! ${data.team === 'team1' ? 'Team 1 (Seats 1 & 3)' : 'Team 2 (Seats 2 & 4)'} is victorious!`;
+        showScreen('winScreen');
 
-    // Show host controls for Seat1, waiting message for others
-    const hostControls = document.getElementById('hostWinControls');
-    const nonHostMessage = document.getElementById('nonHostWinMessage');
-    if (myPosition === 'Seat1') {
-        if (hostControls) hostControls.style.display = 'block';
-        if (nonHostMessage) nonHostMessage.style.display = 'none';
-    } else {
-        if (hostControls) hostControls.style.display = 'none';
-        if (nonHostMessage) nonHostMessage.style.display = 'block';
-    }
+        // Show host controls for Seat1, waiting message for others
+        const hostControls = document.getElementById('hostWinControls');
+        const nonHostMessage = document.getElementById('nonHostWinMessage');
+        if (myPosition === 'Seat1') {
+            if (hostControls) hostControls.style.display = 'block';
+            if (nonHostMessage) nonHostMessage.style.display = 'none';
+        } else {
+            if (hostControls) hostControls.style.display = 'none';
+            if (nonHostMessage) nonHostMessage.style.display = 'block';
+        }
+    }, 3000);
 });
 
 socket.on('error', (message) => {

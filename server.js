@@ -1247,6 +1247,7 @@ io.on('connection', (socket) => {
           const teammate = getTeammate(gameState, position);
 
           if (checkWinCondition(gameState, teammate)) {
+            io.to(gameState.id).emit('gameStateUpdate', gameState);
             io.to(gameState.id).emit('gameWon', {
               winner: `${position} and ${teammate}`,
               team: team
@@ -1341,6 +1342,7 @@ io.on('connection', (socket) => {
         const teammate = getTeammate(gameState, position);
 
         if (checkWinCondition(gameState, teammate)) {
+          io.to(gameState.id).emit('gameStateUpdate', gameState);
           io.to(gameState.id).emit('gameWon', {
             winner: `${position} and ${teammate}`,
             team: team
@@ -1397,6 +1399,7 @@ io.on('connection', (socket) => {
         const teammate = getTeammate(gameState, position);
 
         if (checkWinCondition(gameState, teammate)) {
+          io.to(gameState.id).emit('gameStateUpdate', gameState);
           io.to(gameState.id).emit('gameWon', {
             winner: `${position} and ${teammate}`,
             team: team
