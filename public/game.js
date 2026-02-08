@@ -1316,8 +1316,18 @@ function canComplete7CardSplit(firstMarbleOwner, firstMarbleId, firstSpaces) {
         }
     }
 
-    // Teammate's marbles if finished
-    if (isPlayerFinished(myPosition)) {
+    // Teammate's marbles if finished, or if first move into home would finish the player
+    let includeTeammate = isPlayerFinished(myPosition);
+    if (!includeTeammate && firstMarbleDest.type === 'home' && firstMarbleOwner === myPosition) {
+        let homeCount = 0;
+        for (let mId in gameState.players[myPosition].marbles) {
+            if (gameState.players[myPosition].marbles[mId].location === 'home') homeCount++;
+        }
+        if (homeCount === 4) {
+            includeTeammate = true;
+        }
+    }
+    if (includeTeammate) {
         const teammate = getTeammate(myPosition);
         for (let marbleId in gameState.players[teammate].marbles) {
             const marble = gameState.players[teammate].marbles[marbleId];
