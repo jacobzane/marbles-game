@@ -978,7 +978,7 @@ body {
 }
 
 .team-label {
-    width: 100%;
+    grid-column: 1 / -1;
     text-align: center;
     color: #aaa;
     font-size: 0.9rem;
