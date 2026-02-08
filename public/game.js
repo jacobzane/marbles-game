@@ -266,8 +266,7 @@ socket.on('splitMoveComplete', () => {
 socket.on('gameWon', (data) => {
     // Delay win screen so players can see the final move animation
     setTimeout(() => {
-        document.getElementById('winnerText').textContent =
-            `${data.winner} wins! ${data.team === 'team1' ? 'Team 1 (Seats 1 & 3)' : 'Team 2 (Seats 2 & 4)'} is victorious!`;
+        document.getElementById('winnerText').textContent = `${data.winner} Win!`;
         showScreen('winScreen');
 
         // Show host controls for Seat1, waiting message for others
@@ -1781,6 +1780,10 @@ function categorizeMove(change) {
 
     // Track to track movement
     if (from.location === 'track' && to.location === 'track') {
+        // Joker moves should always be direct line
+        if (gameState.lastPlayedCard === 'Joker') {
+            return 'direct';
+        }
         // Check if this is a teammate bump (marble sent to its own home entry)
         // This happens when landing on a teammate - they go directly to their home entry
         const homeEntry = gameState.board[player]?.homeEntry;

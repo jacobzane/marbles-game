@@ -1237,14 +1237,14 @@ io.on('connection', (socket) => {
         gameState.pendingSplitMove = null;
 
         if (checkWinCondition(gameState, position)) {
-          const team = getTeam(gameState, position);
           const teammate = getTeammate(gameState, position);
 
           if (checkWinCondition(gameState, teammate)) {
             io.to(gameState.id).emit('gameStateUpdate', gameState);
+            const name1 = gameState.players[position].name;
+            const name2 = gameState.players[teammate].name;
             io.to(gameState.id).emit('gameWon', {
-              winner: `${position} and ${teammate}`,
-              team: team
+              winner: `${name1} and ${name2}`
             });
             return;
           }
@@ -1332,14 +1332,14 @@ io.on('connection', (socket) => {
       gameState.pendingSplitMove = null;
 
       if (checkWinCondition(gameState, position)) {
-        const team = getTeam(gameState, position);
         const teammate = getTeammate(gameState, position);
 
         if (checkWinCondition(gameState, teammate)) {
           io.to(gameState.id).emit('gameStateUpdate', gameState);
+          const name1 = gameState.players[position].name;
+          const name2 = gameState.players[teammate].name;
           io.to(gameState.id).emit('gameWon', {
-            winner: `${position} and ${teammate}`,
-            team: team
+            winner: `${name1} and ${name2}`
           });
           return;
         }
@@ -1380,6 +1380,7 @@ io.on('connection', (socket) => {
     console.log(`[playCard] ${position} playing ${card.value} of ${card.suit}`);
 
     gameState.currentMoveLandingEffects = [];
+    gameState.lastPlayedCard = card.value;
     const result = processCardPlay(gameState, position, card, moveData);
 
     if (result.success) {
@@ -1389,14 +1390,14 @@ io.on('connection', (socket) => {
       dealCards(gameState, position, 1);
 
       if (checkWinCondition(gameState, position)) {
-        const team = getTeam(gameState, position);
         const teammate = getTeammate(gameState, position);
 
         if (checkWinCondition(gameState, teammate)) {
           io.to(gameState.id).emit('gameStateUpdate', gameState);
+          const name1 = gameState.players[position].name;
+          const name2 = gameState.players[teammate].name;
           io.to(gameState.id).emit('gameWon', {
-            winner: `${position} and ${teammate}`,
-            team: team
+            winner: `${name1} and ${name2}`
           });
           return;
         }
@@ -1443,6 +1444,7 @@ io.on('connection', (socket) => {
     player.discardPile.push(card);
     addMoveToLog(gameState, position, card, 'discarded', []);
     dealCards(gameState, position, 1);
+    gameState.lastPlayedCard = null;
 
     gameState.pendingSplitMove = null;
 
@@ -1965,11 +1967,6 @@ function handleLanding(gameState, landingPlayer, targetPlayer, targetMarbleId) {
 function checkWinCondition(gameState, player) {
   const teammate = getTeammate(gameState, player);
   return isPlayerFinished(gameState, player) && isPlayerFinished(gameState, teammate);
-}
-
-function getTeam(gameState, player) {
-  if (gameState.teams.team1.includes(player)) return 'team1';
-  return 'team2';
 }
 
 function nextTurn(gameState) {
