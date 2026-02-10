@@ -242,6 +242,11 @@ body {
 /* Game Screen - Fixed Viewport */
 #gameScreen {
     overflow: hidden;
+    transition: background 0.4s ease-in-out;
+}
+
+#gameScreen.my-turn {
+    background: linear-gradient(135deg, #0a2e1a 0%, #0e3e20 100%);
 }
 
 .game-container {
@@ -821,21 +826,52 @@ body {
     }
 }
 
-/* Turn indicator glow at bottom of screen */
-.turn-glow {
+/* Turn indicator edge glows */
+.turn-glow-bottom, .turn-glow-top, .turn-glow-left, .turn-glow-right {
     position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 120px;
-    background: linear-gradient(to top, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.1) 40%, transparent);
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.4s ease-in-out;
     z-index: 100;
 }
 
-.turn-glow.active {
+/* Bottom glow (own turn) - white */
+.turn-glow-bottom {
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 120px;
+    background: linear-gradient(to top, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.1) 40%, transparent);
+}
+
+/* Top glow - green */
+.turn-glow-top {
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 120px;
+    background: linear-gradient(to bottom, rgba(0, 255, 100, 0.25), rgba(0, 255, 100, 0.1) 40%, transparent);
+}
+
+/* Left glow - green */
+.turn-glow-left {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 120px;
+    background: linear-gradient(to right, rgba(0, 255, 100, 0.25), rgba(0, 255, 100, 0.1) 40%, transparent);
+}
+
+/* Right glow - green */
+.turn-glow-right {
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 120px;
+    background: linear-gradient(to left, rgba(0, 255, 100, 0.25), rgba(0, 255, 100, 0.1) 40%, transparent);
+}
+
+.turn-glow-bottom.active, .turn-glow-top.active, .turn-glow-left.active, .turn-glow-right.active {
     opacity: 1;
 }
 

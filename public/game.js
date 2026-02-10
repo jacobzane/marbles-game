@@ -676,20 +676,27 @@ function renderGame() {
     renderDebugPanel();
 }
 
-// Update the bottom screen glow to indicate it's the player's turn
+// Update screen edge glows and background to indicate whose turn it is
 function updateTurnGlow() {
-    let turnGlow = document.getElementById('turnGlow');
+    const edges = ['bottom', 'top', 'left', 'right'];
+    const gameScreen = document.getElementById('gameScreen');
 
-    // Create the glow element if it doesn't exist
-    if (!turnGlow) {
-        turnGlow = document.createElement('div');
-        turnGlow.id = 'turnGlow';
-        turnGlow.className = 'turn-glow';
-        document.getElementById('gameScreen').appendChild(turnGlow);
+    // Ensure all 4 glow elements exist
+    for (const edge of edges) {
+        const id = `turnGlow-${edge}`;
+        if (!document.getElementById(id)) {
+            const el = document.createElement('div');
+            el.id = id;
+            el.className = `turn-glow-${edge}`;
+            gameScreen.appendChild(el);
+        }
     }
 
     if (!gameState || !gameState.gameStarted) {
-        turnGlow.classList.remove('active');
+        for (const edge of edges) {
+            document.getElementById(`turnGlow-${edge}`).classList.remove('active');
+        }
+        gameScreen.classList.remove('my-turn');
         return;
     }
 
@@ -698,10 +705,30 @@ function updateTurnGlow() {
     const visualCurrentPlayer = gameState.playerOrder[visualTurnIndex];
     const isMyTurn = visualCurrentPlayer === myPosition;
 
+    // Calculate which edge the current player is on (relative to viewer)
+    const currentSeatIndex = gameState.playerOrder.indexOf(visualCurrentPlayer);
+    const mySeatIndex = gameState.playerOrder.indexOf(myPosition);
+    const relativeSeatDiff = (currentSeatIndex - mySeatIndex + 4) % 4;
+
+    // Map relative position to edge: 0=bottom(me), 1=left, 2=top, 3=right
+    const edgeMap = { 0: 'bottom', 1: 'left', 2: 'top', 3: 'right' };
+    const activeEdge = edgeMap[relativeSeatDiff];
+
+    // Activate the correct edge glow, deactivate others
+    for (const edge of edges) {
+        const el = document.getElementById(`turnGlow-${edge}`);
+        if (edge === activeEdge) {
+            el.classList.add('active');
+        } else {
+            el.classList.remove('active');
+        }
+    }
+
+    // Shift background to green on own turn
     if (isMyTurn) {
-        turnGlow.classList.add('active');
+        gameScreen.classList.add('my-turn');
     } else {
-        turnGlow.classList.remove('active');
+        gameScreen.classList.remove('my-turn');
     }
 }
 
