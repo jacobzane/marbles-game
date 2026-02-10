@@ -260,10 +260,10 @@ function canControlMarble(gameState, actingPlayer, marbleOwner) {
 function countMoveableMarbles(gameState, actingPlayer, assumeFinishedAfterMove = false) {
   let count = 0;
 
-  // Check own marbles
+  // Check own marbles (exclude home position 4 - can't move forward from last slot)
   for (let marbleId in gameState.players[actingPlayer].marbles) {
     const marble = gameState.players[actingPlayer].marbles[marbleId];
-    if (marble.location === 'track' || marble.location === 'home') {
+    if (marble.location === 'track' || (marble.location === 'home' && marble.position < 4)) {
       count++;
     }
   }
@@ -273,7 +273,7 @@ function countMoveableMarbles(gameState, actingPlayer, assumeFinishedAfterMove =
     const teammate = getTeammate(gameState, actingPlayer);
     for (let marbleId in gameState.players[teammate].marbles) {
       const marble = gameState.players[teammate].marbles[marbleId];
-      if (marble.location === 'track' || marble.location === 'home') {
+      if (marble.location === 'track' || (marble.location === 'home' && marble.position < 4)) {
         count++;
       }
     }
@@ -446,33 +446,22 @@ function canPlayCard(gameState, position, card) {
 
   // Handle face cards and special cards
   if (cardValue === 'A') {
-    // Ace: Enter from start OR move 1 OR move 11
+    // Ace: Enter from start OR move 1
     if (canEnterFromStart(gameState, position)) return true;
     if (canMoveAnyMarbleForward(gameState, position, 1)) return true;
-    if (canMoveAnyMarbleForward(gameState, position, 11)) return true;
     return false;
   }
 
-  if (cardValue === 'K') {
-    // King: Enter from start OR move 13
+  if (cardValue === 'K' || cardValue === 'J' || cardValue === 'Q') {
+    // Face cards: Enter from start OR move 10
     if (canEnterFromStart(gameState, position)) return true;
-    if (canMoveAnyMarbleForward(gameState, position, 13)) return true;
+    if (canMoveAnyMarbleForward(gameState, position, 10)) return true;
     return false;
   }
 
   if (cardValue === 'Joker') {
     // Joker: land on any other player's marble (source can be from start or track)
     return canJokerMove(gameState, position);
-  }
-
-  if (cardValue === 'J') {
-    // Jack moves 11 spaces
-    return canMoveAnyMarbleForward(gameState, position, 11);
-  }
-
-  if (cardValue === 'Q') {
-    // Queen moves 12 spaces
-    return canMoveAnyMarbleForward(gameState, position, 12);
   }
 
   if (cardValue === '4') {
@@ -681,233 +670,202 @@ function canJokerMove(gameState, position) {
   return false;
 }
 
+// Returns array of {location, position} destinations for a marble moving exactly `spaces` forward.
+// Mirrors canMarbleMoveForward logic but returns destinations instead of boolean.
+// A marble near its home entry may have two valid destinations (enter home OR continue on track).
+function computeForwardDestinations(gameState, owner, marbleId, spaces) {
+  const marble = gameState.players[owner].marbles[marbleId];
+  const destinations = [];
+
+  if (marble.location !== 'track' && marble.location !== 'home') {
+    return destinations;
+  }
+
+  // Home marble: can only move within home
+  if (marble.location === 'home') {
+    const newHomePos = marble.position + spaces;
+    if (newHomePos > 4) return destinations;
+    for (let i = marble.position + 1; i <= newHomePos; i++) {
+      if (isHomePositionOccupied(gameState, owner, i)) {
+        return destinations;
+      }
+    }
+    destinations.push({ location: 'home', position: newHomePos });
+    return destinations;
+  }
+
+  // Track marble
+  const startPos = marble.position;
+  const homeEntry = gameState.board[owner].homeEntry;
+
+  let crossesHome = false;
+  let spacesToHomeEntry = 0;
+  const onHomeEntry = startPos === homeEntry;
+
+  if (!onHomeEntry) {
+    for (let i = 1; i <= spaces; i++) {
+      if ((startPos + i) % 72 === homeEntry) {
+        crossesHome = true;
+        spacesToHomeEntry = i;
+        break;
+      }
+    }
+  }
+
+  if (onHomeEntry || crossesHome) {
+    const spacesIntoHome = onHomeEntry ? spaces : spaces - spacesToHomeEntry;
+
+    // Option 1: Enter home
+    if (spacesIntoHome > 0 && spacesIntoHome <= 5) {
+      const homeIndex = spacesIntoHome - 1;
+      if (!isHomePathBlockedFromStart(gameState, owner, homeIndex) &&
+          !isHomePositionOccupied(gameState, owner, homeIndex)) {
+        destinations.push({ location: 'home', position: homeIndex });
+      }
+    }
+
+    // Option 2: Continue on track past home entry
+    const trackDest = (startPos + spaces) % 72;
+    if (!isPathBlockedIncludingHomeEntry(gameState, owner, startPos, trackDest, homeEntry)) {
+      const occupant = getMarbleOnTrack(gameState, trackDest);
+      if (!occupant || occupant.player !== owner) {
+        const teammate = getTeammate(gameState, owner);
+        if (!(occupant && occupant.player === teammate && !canLandOnTeammate(gameState, teammate))) {
+          destinations.push({ location: 'track', position: trackDest });
+        }
+      }
+    }
+  } else {
+    // Normal forward move not crossing home
+    const newPosition = (startPos + spaces) % 72;
+    if (!isPathBlocked(gameState, owner, startPos, newPosition, 'forward')) {
+      const occupant = getMarbleOnTrack(gameState, newPosition);
+      if (!occupant || occupant.player !== owner) {
+        const teammate = getTeammate(gameState, owner);
+        if (!(occupant && occupant.player === teammate && !canLandOnTeammate(gameState, teammate))) {
+          destinations.push({ location: 'track', position: newPosition });
+        }
+      }
+    }
+  }
+
+  return destinations;
+}
+
 // Check if player can play a 7 card
+// Uses temporary state mutation: temporarily moves marble A to its destination,
+// then checks if marble B can move the remainder. This naturally handles:
+// - First marble unblocking path for second marble
+// - First marble entering home unlocking teammate's marbles
 function canMove7Card(gameState, position) {
   const controllableMarbles = getControllableMarbles(gameState, position);
 
-  // Collect marbles that can move and how far they can move
-  const moveableMarbles = [];
+  // Check if any single marble can move exactly 7
   for (let { owner, marbleId } of controllableMarbles) {
-    const marble = gameState.players[owner].marbles[marbleId];
-    if (marble.location !== 'track' && marble.location !== 'home') continue;
-
-    const possibleMoves = [];
-    for (let spaces = 1; spaces <= 7; spaces++) {
-      if (canMarbleMoveForward(gameState, owner, marbleId, spaces)) {
-        possibleMoves.push(spaces);
-      }
-    }
-    if (possibleMoves.length > 0) {
-      moveableMarbles.push({ owner, marbleId, possibleMoves });
+    if (canMarbleMoveForward(gameState, owner, marbleId, 7)) {
+      return true;
     }
   }
 
-  if (moveableMarbles.length === 0) return false;
+  // Check split moves: marble A moves 1-6, marble B moves the remainder
+  for (let { owner: ownerA, marbleId: marbleIdA } of controllableMarbles) {
+    const marbleA = gameState.players[ownerA].marbles[marbleIdA];
+    if (marbleA.location !== 'track' && marbleA.location !== 'home') continue;
+    if (marbleA.location === 'home' && marbleA.position >= 4) continue;
 
-  // Case 1: Only 1 moveable marble - must be able to move exactly 7
-  if (moveableMarbles.length === 1) {
-    // Check if player would finish after this move and have teammate marbles available
-    const { owner, marbleId, possibleMoves } = moveableMarbles[0];
+    for (let firstSpaces = 1; firstSpaces <= 6; firstSpaces++) {
+      const destinations = computeForwardDestinations(gameState, ownerA, marbleIdA, firstSpaces);
 
-    // Can the single marble move exactly 7?
-    if (possibleMoves.includes(7)) {
-      return true;
-    }
+      for (let dest of destinations) {
+        // Temporarily mutate marble A to its destination
+        const origLocation = marbleA.location;
+        const origPosition = marbleA.position;
+        marbleA.location = dest.location;
+        marbleA.position = dest.position;
 
-    // Check if moving this marble into home would finish the player,
-    // making teammate's marbles available for the remainder
-    for (let firstSpaces of possibleMoves) {
-      if (firstSpaces >= 7) continue; // No remainder needed
-
-      const marble = gameState.players[owner].marbles[marbleId];
-      if (marble.location === 'track' && wouldBeFinishedAfterMove(gameState, owner, marbleId, true)) {
-        const teammate = getTeammate(gameState, position);
         const remainingSpaces = 7 - firstSpaces;
 
-        // Check if any teammate marble can move the remainder
-        for (let tMarbleId in gameState.players[teammate].marbles) {
-          const tMarble = gameState.players[teammate].marbles[tMarbleId];
-          if (tMarble.location !== 'track' && tMarble.location !== 'home') continue;
+        // Re-get controllable marbles (if this move finishes the player, teammate unlocks)
+        const newControllable = getControllableMarbles(gameState, position);
 
-          if (canMarbleMoveForward(gameState, teammate, tMarbleId, remainingSpaces)) {
-            return true;
+        let found = false;
+        for (let { owner: ownerB, marbleId: marbleIdB } of newControllable) {
+          if (ownerA === ownerB && marbleIdA === marbleIdB) continue;
+
+          if (canMarbleMoveForward(gameState, ownerB, marbleIdB, remainingSpaces)) {
+            found = true;
+            break;
           }
         }
-      }
-    }
 
-    return false;
-  }
+        // Restore marble A
+        marbleA.location = origLocation;
+        marbleA.position = origPosition;
 
-  // Case 2: 2+ moveable marbles - check if any combination totals 7
-  // First, check if any single marble can move exactly 7
-  for (let marble of moveableMarbles) {
-    if (marble.possibleMoves.includes(7)) {
-      return true;
-    }
-  }
-
-  // Check split combinations between two different marbles
-  for (let i = 0; i < moveableMarbles.length; i++) {
-    for (let j = 0; j < moveableMarbles.length; j++) {
-      if (i === j) continue; // Must be different marbles
-
-      for (let firstMove of moveableMarbles[i].possibleMoves) {
-        const remainder = 7 - firstMove;
-        if (remainder > 0 && remainder <= 7 && moveableMarbles[j].possibleMoves.includes(remainder)) {
-          return true;
-        }
+        if (found) return true;
       }
     }
   }
 
-  return false;
-}
-
-// Check if path is blocked, but exclude a specific marble that will move away
-function isPathBlockedExcluding(gameState, player, startPos, endPos, direction, excludeOwner, excludeMarbleId) {
-  const excludeMarble = excludeOwner && excludeMarbleId ?
-    gameState.players[excludeOwner].marbles[excludeMarbleId] : null;
-  const excludePos = excludeMarble && excludeMarble.location === 'track' ? excludeMarble.position : -1;
-
-  if (direction === 'forward') {
-    let current = (startPos + 1) % 72;
-    while (current !== endPos) {
-      if (current !== excludePos) {
-        const occupant = getMarbleOnTrack(gameState, current);
-        if (occupant && occupant.player === player) {
-          return true;
-        }
-      }
-      current = (current + 1) % 72;
-    }
-  } else {
-    let current = startPos - 1;
-    if (current < 0) current += 72;
-    while (current !== endPos) {
-      if (current !== excludePos) {
-        const occupant = getMarbleOnTrack(gameState, current);
-        if (occupant && occupant.player === player) {
-          return true;
-        }
-      }
-      current = current - 1;
-      if (current < 0) current += 72;
-    }
-  }
   return false;
 }
 
 // Check if player can play a 9 card
+// 9 card: forward 1-8 on one marble, backward (9-forward) on a DIFFERENT marble on track.
+// Uses temporary state mutation so the backward marble's checks see the forward marble's new position.
+// This naturally handles: forward marble unblocking backward path, and finishing player unlocking teammate.
 function canMove9Card(gameState, position) {
   const controllableMarbles = getControllableMarbles(gameState, position);
 
-  // Need: one marble for forward (1-8 spaces) AND another marble on track for backward
-  // The tricky part: after first marble moves, we need a DIFFERENT marble for backward
-  // IMPORTANT: The first marble moving might unblock the backward path for the second marble
+  for (let { owner: ownerA, marbleId: marbleIdA } of controllableMarbles) {
+    const marbleA = gameState.players[ownerA].marbles[marbleIdA];
+    if (marbleA.location !== 'track' && marbleA.location !== 'home') continue;
+    if (marbleA.location === 'home' && marbleA.position >= 4) continue;
 
-  // First, check if we have at least 2 marbles, or 1 marble + teammate marbles if we'd finish
-  const trackMarbles = controllableMarbles.filter(m =>
-    gameState.players[m.owner].marbles[m.marbleId].location === 'track'
-  );
+    for (let forwardSpaces = 1; forwardSpaces <= 8; forwardSpaces++) {
+      const destinations = computeForwardDestinations(gameState, ownerA, marbleIdA, forwardSpaces);
 
-  // Need at least one marble on track for backward move
-  if (trackMarbles.length === 0) return false;
+      for (let dest of destinations) {
+        // Temporarily mutate marble A to its destination
+        const origLocation = marbleA.location;
+        const origPosition = marbleA.position;
+        marbleA.location = dest.location;
+        marbleA.position = dest.position;
 
-  // Need at least one marble that can move forward
-  for (let { owner, marbleId } of controllableMarbles) {
-    for (let spaces = 1; spaces <= 8; spaces++) {
-      if (canMarbleMoveForward(gameState, owner, marbleId, spaces)) {
-        // Check if there's a DIFFERENT marble on track for backward
-        const remainingSpaces = 9 - spaces;
-        const firstMarble = gameState.players[owner].marbles[marbleId];
+        const backwardSpaces = 9 - forwardSpaces;
 
-        // Check if first marble will leave the track (enter home)
-        const willEnterHome = firstMarble.location === 'track' &&
-          willMarbleEnterHome(gameState, owner, marbleId, spaces);
+        // Re-get controllable marbles (if this move finishes the player, teammate unlocks)
+        const newControllable = getControllableMarbles(gameState, position);
 
-        for (let track of trackMarbles) {
-          // Must be different marble
-          if (track.owner === owner && track.marbleId === marbleId) continue;
+        let found = false;
+        for (let { owner: ownerB, marbleId: marbleIdB } of newControllable) {
+          if (ownerA === ownerB && marbleIdA === marbleIdB) continue;
 
-          // Check if this marble could move backward
-          const trackMarble = gameState.players[track.owner].marbles[track.marbleId];
-          let backPos = trackMarble.position - remainingSpaces;
+          const marbleB = gameState.players[ownerB].marbles[marbleIdB];
+          if (marbleB.location !== 'track') continue;
+
+          let backPos = marbleB.position - backwardSpaces;
           if (backPos < 0) backPos += 72;
 
-          // Check path - if first marble enters home, exclude it from blocking check
-          let pathClear;
-          if (willEnterHome) {
-            pathClear = !isPathBlockedExcluding(gameState, track.owner, trackMarble.position, backPos, 'backward', owner, marbleId);
-          } else {
-            pathClear = !isPathBlocked(gameState, track.owner, trackMarble.position, backPos, 'backward');
-          }
-
-          if (pathClear) {
-            // Also check destination isn't blocked (excluding first marble if it's leaving)
+          if (!isPathBlocked(gameState, ownerB, marbleB.position, backPos, 'backward')) {
             const occupant = getMarbleOnTrack(gameState, backPos);
-            const destClear = !occupant || occupant.player !== track.owner ||
-              (willEnterHome && occupant.player === owner && occupant.marbleId === marbleId);
-
-            if (destClear) {
-              // Check if occupant is actually the first marble leaving
-              if (occupant && willEnterHome && occupant.player === owner) {
-                // First marble is at destination but will move away - OK
-                return true;
+            if (!occupant || occupant.player !== ownerB) {
+              const teammate = getTeammate(gameState, ownerB);
+              if (occupant && occupant.player === teammate && !canLandOnTeammate(gameState, teammate)) {
+                continue;
               }
-              if (!occupant || occupant.player !== track.owner) {
-                const teammate = getTeammate(gameState, track.owner);
-                if (occupant && occupant.player === teammate && !canLandOnTeammate(gameState, teammate)) {
-                  continue;
-                }
-                return true;
-              }
+              found = true;
+              break;
             }
           }
         }
 
-        // Also check if moving this marble would finish the player, making teammate marbles available
-        if (firstMarble.location === 'track' && wouldBeFinishedAfterMove(gameState, owner, marbleId, true)) {
-          const teammate = getTeammate(gameState, position);
-          for (let mId in gameState.players[teammate].marbles) {
-            const tMarble = gameState.players[teammate].marbles[mId];
-            if (tMarble.location === 'track') {
-              let backPos = tMarble.position - remainingSpaces;
-              if (backPos < 0) backPos += 72;
-              // Exclude the first marble since it's entering home
-              if (!isPathBlockedExcluding(gameState, teammate, tMarble.position, backPos, 'backward', owner, marbleId)) {
-                const occupant = getMarbleOnTrack(gameState, backPos);
-                if (!occupant || occupant.player !== teammate) {
-                  return true;
-                }
-              }
-            }
-          }
-        }
+        // Restore marble A
+        marbleA.location = origLocation;
+        marbleA.position = origPosition;
+
+        if (found) return true;
       }
-    }
-  }
-  return false;
-}
-
-// Helper to check if a marble will enter home with given forward spaces
-function willMarbleEnterHome(gameState, owner, marbleId, spaces) {
-  const marble = gameState.players[owner].marbles[marbleId];
-  if (marble.location !== 'track') return false;
-
-  const homeEntry = gameState.board[owner].homeEntry;
-  const startPos = marble.position;
-
-  // Check if on home entry
-  if (startPos === homeEntry) {
-    return spaces <= 5;
-  }
-
-  // Check if crosses home entry
-  for (let i = 1; i <= spaces; i++) {
-    if ((startPos + i) % 72 === homeEntry) {
-      const spacesIntoHome = spaces - i;
-      return spacesIntoHome > 0 && spacesIntoHome <= 5;
     }
   }
 
