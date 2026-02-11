@@ -13,16 +13,34 @@ let splitMoveState = null;
 // State for home choice on regular cards
 let homeChoiceState = null;
 
-// State for distance counting
-let distanceCountState = {
-    active: false,
-    startPos: null,
-    startType: null, // 'track' or 'home'
-    startPlayer: null, // player position for home spaces
-    currentPos: null,
-    currentType: null,
-    currentPlayer: null
-};
+// Disconnect overlay helpers
+function showDisconnectOverlay() {
+    const overlay = document.getElementById('disconnectOverlay');
+    if (overlay) overlay.classList.add('active');
+}
+
+function hideDisconnectOverlay() {
+    const overlay = document.getElementById('disconnectOverlay');
+    if (overlay) overlay.classList.remove('active');
+}
+
+socket.on('disconnect', () => {
+    showDisconnectOverlay();
+});
+
+socket.on('connect', () => {
+    hideDisconnectOverlay();
+
+    // If we were in a game, re-join to map our new socket ID on the server
+    if (currentTableId && myPlayerName && myPosition) {
+        console.log(`[RECONNECT] Re-joining ${currentTableId} as ${myPlayerName} (${myPosition})`);
+        socket.emit('joinTable', {
+            tableId: currentTableId,
+            playerName: myPlayerName,
+            position: myPosition
+        });
+    }
+});
 
 // Animation state
 let isAnimating = false;
@@ -118,6 +136,7 @@ socket.on('joinSuccess', (data) => {
     myPosition = data.position;
     gameState = data.gameState;
     currentTableId = data.gameState.id;
+    myPlayerName = gameState.players[data.position].name;
 
     // Handle reconnection to different game states
     if (gameState.gameStarted) {
@@ -343,11 +362,23 @@ function renderTableList(tables) {
     tableListEl.innerHTML = tables.map(table => {
         const seatInfo = ['Seat1', 'Seat2', 'Seat3', 'Seat4'].map(seat => {
             const name = table.seats[seat];
+            const disconnected = table.disconnectedSeats && table.disconnectedSeats[seat];
+            if (disconnected) {
+                return `<span class="table-seat open">${seat.replace('Seat', 'S')}: Open</span>`;
+            }
             return `<span class="table-seat ${name ? 'taken' : 'open'}">${seat.replace('Seat', 'S')}: ${name || 'Open'}</span>`;
         }).join('');
 
         const statusText = table.gameStarted ? 'In Game' : `${table.playerCount}/4 Players`;
         const statusClass = table.gameStarted ? 'status-ingame' : 'status-waiting';
+
+        // Allow joining if there's an open/disconnected seat (even mid-game)
+        const canJoin = table.hasOpenSeat && !(table.playerCount >= 4 && !Object.values(table.disconnectedSeats || {}).some(d => d));
+        const btnDisabled = !canJoin;
+        let btnText = 'Join';
+        if (table.gameStarted && canJoin) btnText = 'Join Game';
+        else if (!canJoin && table.gameStarted) btnText = 'In Progress';
+        else if (!canJoin) btnText = 'Full';
 
         return `
             <div class="table-card" data-table-id="${table.id}">
@@ -357,8 +388,8 @@ function renderTableList(tables) {
                 </div>
                 <div class="table-card-host">Host: ${table.hostName}</div>
                 <div class="table-card-seats">${seatInfo}</div>
-                <button class="btn btn-primary table-join-btn" ${table.gameStarted || table.playerCount >= 4 ? 'disabled' : ''}>
-                    ${table.gameStarted ? 'In Progress' : table.playerCount >= 4 ? 'Full' : 'Join'}
+                <button class="btn btn-primary table-join-btn" ${btnDisabled ? 'disabled' : ''}>
+                    ${btnText}
                 </button>
             </div>
         `;
@@ -405,7 +436,8 @@ function updateSeatAvailability(tables) {
         const statusEl = document.getElementById(`seatStatus${i}`);
         const btn = document.querySelector(`.seat-btn[data-position="${seat}"]`);
         if (statusEl && btn) {
-            if (table.seats[seat]) {
+            const disconnected = table.disconnectedSeats && table.disconnectedSeats[seat];
+            if (table.seats[seat] && !disconnected) {
                 statusEl.textContent = `(${table.seats[seat]})`;
                 btn.disabled = true;
                 btn.classList.add('taken');
@@ -2022,12 +2054,15 @@ function renderBoard() {
     let validDestinations = [];
     if (splitMoveState && splitMoveState.awaitingDestination && splitMoveState.firstMarbleId) {
         const maxSpaces = splitMoveState.cardType === 7 ? 7 : 8;
+        const owner = splitMoveState.firstMarbleOwner || myPosition;
         validDestinations = getValidDestinations(
-            splitMoveState.firstMarbleOwner || myPosition,
+            owner,
             splitMoveState.firstMarbleId,
             maxSpaces,
             'forward'
         );
+
+        const rawCount = validDestinations.length;
 
         // Bug 1 Fix: If only 1 moveable marble for 7 card, must use all 7 spaces
         if (splitMoveState.cardType === 7) {
@@ -2038,21 +2073,23 @@ function renderBoard() {
                 // Bug 3 Fix: Filter destinations where split can be completed
                 validDestinations = validDestinations.filter(d =>
                     canComplete7CardSplit(
-                        splitMoveState.firstMarbleOwner || myPosition,
+                        owner,
                         splitMoveState.firstMarbleId,
                         d.spaces
                     )
                 );
             }
+            console.log(`[RENDER-DEST] 7-card: marble ${owner}/${splitMoveState.firstMarbleId}, raw=${rawCount}, filtered=${validDestinations.length}, moveableCount=${moveableCount}`, validDestinations.map(d => `${d.type}@${d.type==='home'?d.homeIndex:d.position}(${d.spaces}sp)`));
         } else if (splitMoveState.cardType === 9) {
             // Bug 4 Fix: Filter destinations where backward move can be completed
             validDestinations = validDestinations.filter(d =>
                 canComplete9CardSplit(
-                    splitMoveState.firstMarbleOwner || myPosition,
+                    owner,
                     splitMoveState.firstMarbleId,
                     d.spaces
                 )
             );
+            console.log(`[RENDER-DEST] 9-card: marble ${owner}/${splitMoveState.firstMarbleId}, raw=${rawCount}, filtered=${validDestinations.length}`, validDestinations.map(d => `${d.type}@${d.type==='home'?d.homeIndex:d.position}(${d.spaces}sp)`));
         }
     } else if (splitMoveState && splitMoveState.awaitingSecondDestination && splitMoveState.secondMarbleValidDests) {
         // Show valid destinations for second marble in 7 card split
@@ -2388,8 +2425,6 @@ function renderBoard() {
     deckCountText.textContent = `${deckCount} cards`;
     svg.appendChild(deckCountText);
 
-    // Draw distance counting line if active
-    drawDistanceLine();
 }
 
 // Render board but hide specific marbles (for animation)
@@ -2949,14 +2984,30 @@ function handle7CardMarbleClick(marbleOwner, marbleId) {
         alert('You cannot move that marble');
         return;
     }
-    
+
     const marble = gameState.players[marbleOwner].marbles[marbleId];
-    
+
     if (marble.location !== 'track' && marble.location !== 'home') {
         alert('Marble must be on track or in home to move');
         return;
     }
-    
+
+    // Pre-check: does this marble have any valid 7-card destinations?
+    const testDests = getValidDestinations(marbleOwner, marbleId, 7, 'forward');
+    const moveableCount = countMoveableMarbles().count;
+    let validDests;
+    if (moveableCount === 1) {
+        validDests = testDests.filter(d => d.spaces === 7);
+    } else {
+        validDests = testDests.filter(d => canComplete7CardSplit(marbleOwner, marbleId, d.spaces));
+    }
+    console.log(`[7-CARD PRE-CHECK] marble ${marbleOwner}/${marbleId} (${marble.location} pos ${marble.position}): ${testDests.length} raw dests, ${validDests.length} after split filter, moveableCount=${moveableCount}`);
+    if (validDests.length === 0) {
+        document.getElementById('cardInstruction').textContent =
+            `7: This marble has no valid moves for a 7 card split. Try a different marble.`;
+        return;
+    }
+
     splitMoveState = {
         cardType: 7,
         firstMarbleId: marbleId,
@@ -2966,10 +3017,10 @@ function handle7CardMarbleClick(marbleOwner, marbleId) {
         awaitingDestination: true,
         awaitingSecondMarble: false
     };
-    
-    document.getElementById('cardInstruction').textContent = 
+
+    document.getElementById('cardInstruction').textContent =
         `7: Click a highlighted space (1-7 ahead) to move there`;
-    
+
     renderBoard();
 }
 
@@ -2978,14 +3029,24 @@ function handle9CardMarbleClick(marbleOwner, marbleId) {
         alert('You cannot move that marble');
         return;
     }
-    
+
     const marble = gameState.players[marbleOwner].marbles[marbleId];
-    
+
     if (marble.location !== 'track' && marble.location !== 'home') {
         alert('First marble must be on track or in home to move forward');
         return;
     }
-    
+
+    // Pre-check: does this marble have any valid 9-card forward destinations?
+    const testDests = getValidDestinations(marbleOwner, marbleId, 8, 'forward');
+    const validDests = testDests.filter(d => canComplete9CardSplit(marbleOwner, marbleId, d.spaces));
+    console.log(`[9-CARD PRE-CHECK] marble ${marbleOwner}/${marbleId} (${marble.location} pos ${marble.position}): ${testDests.length} raw dests, ${validDests.length} after split filter`);
+    if (validDests.length === 0) {
+        document.getElementById('cardInstruction').textContent =
+            `9: This marble has no valid forward moves (need a different track marble for backward). Try a different marble.`;
+        return;
+    }
+
     splitMoveState = {
         cardType: 9,
         firstMarbleId: marbleId,
@@ -2995,10 +3056,10 @@ function handle9CardMarbleClick(marbleOwner, marbleId) {
         awaitingDestination: true,
         awaitingSecondMarble: false
     };
-    
-    document.getElementById('cardInstruction').textContent = 
+
+    document.getElementById('cardInstruction').textContent =
         `9: Click a highlighted space (1-8 ahead) to move forward`;
-    
+
     renderBoard();
 }
 
@@ -3194,347 +3255,6 @@ function getCardValue(card) {
     if (card.value === 'J' || card.value === 'Q' || card.value === 'K') return 'face';
     return parseInt(card.value);
 }
-
-// Distance Counter Functions
-function initializeDistanceCounter() {
-    const svg = gameBoard;
-
-    // Only enable distance counter on desktop (mouse events only)
-    // Touch devices don't support this feature due to drag interaction conflicts
-    svg.addEventListener('mousedown', handleDistanceStart);
-    svg.addEventListener('mousemove', handleDistanceMove);
-    svg.addEventListener('mouseup', handleDistanceEnd);
-    svg.addEventListener('mouseleave', handleDistanceEnd);
-}
-
-function handleDistanceStart(e) {
-    // Don't activate distance counter if waiting for destination selection (7/9 cards)
-    if (splitMoveState && (splitMoveState.awaitingDestination || splitMoveState.awaitingSecondDestination)) {
-        return;
-    }
-
-    // Don't activate if waiting for home choice
-    if (homeChoiceState) {
-        return;
-    }
-
-    const trackPos = e.target.getAttribute('data-track-position');
-    const homePos = e.target.getAttribute('data-home-position');
-    const homePlayer = e.target.getAttribute('data-home-player');
-
-    if (trackPos !== null) {
-        distanceCountState.active = true;
-        distanceCountState.startPos = parseInt(trackPos);
-        distanceCountState.startType = 'track';
-        distanceCountState.startPlayer = null;
-        distanceCountState.currentPos = distanceCountState.startPos;
-        distanceCountState.currentType = 'track';
-        distanceCountState.currentPlayer = null;
-    } else if (homePos !== null && homePlayer !== null) {
-        distanceCountState.active = true;
-        distanceCountState.startPos = parseInt(homePos);
-        distanceCountState.startType = 'home';
-        distanceCountState.startPlayer = homePlayer;
-        distanceCountState.currentPos = distanceCountState.startPos;
-        distanceCountState.currentType = 'home';
-        distanceCountState.currentPlayer = homePlayer;
-    }
-}
-
-function handleDistanceMove(e) {
-    if (!distanceCountState.active) return;
-
-    const svg = gameBoard;
-    const rect = svg.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    // Convert to SVG coordinates
-    const svgX = (x / rect.width) * 800;
-    const svgY = (y / rect.height) * 800;
-
-    // Find nearest position (track or home)
-    const nearestPos = findNearestPosition(svgX, svgY);
-    if (nearestPos !== null) {
-        const changed = nearestPos.pos !== distanceCountState.currentPos ||
-            nearestPos.type !== distanceCountState.currentType ||
-            nearestPos.player !== distanceCountState.currentPlayer;
-
-        if (changed) {
-            distanceCountState.currentPos = nearestPos.pos;
-            distanceCountState.currentType = nearestPos.type;
-            distanceCountState.currentPlayer = nearestPos.player;
-            renderBoard(); // Re-render to show distance line
-        }
-    }
-}
-
-function handleDistanceEnd() {
-    if (distanceCountState.active) {
-        distanceCountState.active = false;
-        distanceCountState.startPos = null;
-        distanceCountState.startType = null;
-        distanceCountState.startPlayer = null;
-        distanceCountState.currentPos = null;
-        distanceCountState.currentType = null;
-        distanceCountState.currentPlayer = null;
-        renderBoard(); // Clear the distance line
-    }
-}
-
-function findNearestPosition(svgX, svgY) {
-    const centerX = 400;
-    const centerY = 400;
-    const squareSize = 680;
-    const rotationOffset = getRotationOffset();
-
-    let nearest = null;
-    let minDist = Infinity;
-
-    // Check all track positions
-    for (let i = 0; i < 72; i++) {
-        const pos = getSquarePosition(i, centerX, centerY, squareSize, rotationOffset);
-        const dist = Math.sqrt((pos.x - svgX) ** 2 + (pos.y - svgY) ** 2);
-        if (dist < minDist && dist < 30) { // Within 30 units
-            minDist = dist;
-            nearest = { pos: i, type: 'track', player: null };
-        }
-    }
-
-    // Check all home positions for each player
-    const positions = ['Seat1', 'Seat2', 'Seat3', 'Seat4'];
-    positions.forEach((player) => {
-        if (!gameState || !gameState.players[player]) return;
-
-        const homeEntry = gameState.board[player].homeEntry;
-        const homeEntryPos = getSquarePosition(homeEntry, centerX, centerY, squareSize, rotationOffset);
-        const homeInward = getPerpendicularInward(homeEntry, rotationOffset);
-        const homeLeft = getLeftDirection(homeInward);
-
-        const homeSpacing = squareSize / 18;
-        const homeStartOffset = homeSpacing;
-
-        const homeOffsets = [
-            { inward: homeStartOffset, left: 0 },
-            { inward: homeStartOffset + homeSpacing, left: 0 },
-            { inward: homeStartOffset + homeSpacing * 2, left: 0 },
-            { inward: homeStartOffset + homeSpacing * 2, left: homeSpacing },
-            { inward: homeStartOffset + homeSpacing * 3, left: homeSpacing }
-        ];
-
-        for (let i = 0; i < 5; i++) {
-            const offset = homeOffsets[i];
-            const homeX = homeEntryPos.x + homeInward.x * offset.inward + homeLeft.x * offset.left;
-            const homeY = homeEntryPos.y + homeInward.y * offset.inward + homeLeft.y * offset.left;
-
-            const dist = Math.sqrt((homeX - svgX) ** 2 + (homeY - svgY) ** 2);
-            if (dist < minDist && dist < 30) { // Within 30 units
-                minDist = dist;
-                nearest = { pos: i, type: 'home', player: player };
-            }
-        }
-    });
-
-    return nearest;
-}
-
-function calculateDistance(startPos, startType, startPlayer, endPos, endType, endPlayer) {
-    // Both positions on track
-    if (startType === 'track' && endType === 'track') {
-        if (startPos === endPos) return 0;
-
-        // Calculate forward distance
-        let forward = 0;
-        let current = startPos;
-        while (current !== endPos && forward < 72) {
-            forward++;
-            current = (current + 1) % 72;
-        }
-
-        // Calculate backward distance
-        let backward = 0;
-        current = startPos;
-        while (current !== endPos && backward < 72) {
-            backward++;
-            current = (current - 1 + 72) % 72;
-        }
-
-        // Return the shorter distance
-        return Math.min(forward, backward);
-    }
-
-    // Start on track, end in home
-    if (startType === 'track' && endType === 'home') {
-        if (!endPlayer) {
-            return null;
-        }
-
-        const homeEntry = gameState.board[endPlayer].homeEntry;
-
-        // Calculate distance to home entry
-        let distToHome = 0;
-        let current = startPos;
-        while (current !== homeEntry && distToHome < 72) {
-            distToHome++;
-            current = (current + 1) % 72;
-        }
-
-        // Add distance into home (endPos is 0-4, representing home index)
-        return distToHome + endPos + 1;
-    }
-
-    // Start in home, end on track (marbles don't move out of home backwards)
-    if (startType === 'home' && endType === 'track') {
-        return null;
-    }
-
-    // Both in home
-    if (startType === 'home' && endType === 'home') {
-        if (startPlayer !== endPlayer) {
-            return null; // Different players
-        }
-
-        if (startPos === endPos) return 0;
-
-        // Can only move forward in home
-        if (endPos > startPos) {
-            return endPos - startPos;
-        } else {
-            return null; // Can't move backward in home
-        }
-    }
-
-    return null;
-}
-
-function drawDistanceLine() {
-    if (!distanceCountState.active || distanceCountState.startPos === null || distanceCountState.currentPos === null) {
-        return;
-    }
-
-    const centerX = 400;
-    const centerY = 400;
-    const squareSize = 680;
-    const rotationOffset = getRotationOffset();
-
-    // Get visual positions for start and end
-    let startVisualPos, endVisualPos;
-
-    if (distanceCountState.startType === 'track') {
-        startVisualPos = getSquarePosition(distanceCountState.startPos, centerX, centerY, squareSize, rotationOffset);
-    } else {
-        // Home position - need to calculate visual position
-        const homeEntry = gameState.board[distanceCountState.startPlayer].homeEntry;
-        const homeEntryPos = getSquarePosition(homeEntry, centerX, centerY, squareSize, rotationOffset);
-        const homeInward = getPerpendicularInward(homeEntry, rotationOffset);
-        const homeLeft = getLeftDirection(homeInward);
-        const homeSpacing = squareSize / 18;
-        const homeStartOffset = homeSpacing;
-        const homeOffsets = [
-            { inward: homeStartOffset, left: 0 },
-            { inward: homeStartOffset + homeSpacing, left: 0 },
-            { inward: homeStartOffset + homeSpacing * 2, left: 0 },
-            { inward: homeStartOffset + homeSpacing * 2, left: homeSpacing },
-            { inward: homeStartOffset + homeSpacing * 3, left: homeSpacing }
-        ];
-        const offset = homeOffsets[distanceCountState.startPos];
-        startVisualPos = {
-            x: homeEntryPos.x + homeInward.x * offset.inward + homeLeft.x * offset.left,
-            y: homeEntryPos.y + homeInward.y * offset.inward + homeLeft.y * offset.left
-        };
-    }
-
-    if (distanceCountState.currentType === 'track') {
-        endVisualPos = getSquarePosition(distanceCountState.currentPos, centerX, centerY, squareSize, rotationOffset);
-    } else {
-        // Home position
-        const homeEntry = gameState.board[distanceCountState.currentPlayer].homeEntry;
-        const homeEntryPos = getSquarePosition(homeEntry, centerX, centerY, squareSize, rotationOffset);
-        const homeInward = getPerpendicularInward(homeEntry, rotationOffset);
-        const homeLeft = getLeftDirection(homeInward);
-        const homeSpacing = squareSize / 18;
-        const homeStartOffset = homeSpacing;
-        const homeOffsets = [
-            { inward: homeStartOffset, left: 0 },
-            { inward: homeStartOffset + homeSpacing, left: 0 },
-            { inward: homeStartOffset + homeSpacing * 2, left: 0 },
-            { inward: homeStartOffset + homeSpacing * 2, left: homeSpacing },
-            { inward: homeStartOffset + homeSpacing * 3, left: homeSpacing }
-        ];
-        const offset = homeOffsets[distanceCountState.currentPos];
-        endVisualPos = {
-            x: homeEntryPos.x + homeInward.x * offset.inward + homeLeft.x * offset.left,
-            y: homeEntryPos.y + homeInward.y * offset.inward + homeLeft.y * offset.left
-        };
-    }
-
-    const svg = gameBoard;
-
-    // Draw line
-    const line = createSVGElement('line', {
-        x1: startVisualPos.x,
-        y1: startVisualPos.y,
-        x2: endVisualPos.x,
-        y2: endVisualPos.y,
-        stroke: '#FFD700',
-        'stroke-width': 3,
-        'stroke-dasharray': '5,5',
-        'pointer-events': 'none'
-    });
-    svg.appendChild(line);
-
-    // Calculate distance
-    const distance = calculateDistance(
-        distanceCountState.startPos,
-        distanceCountState.startType,
-        distanceCountState.startPlayer,
-        distanceCountState.currentPos,
-        distanceCountState.currentType,
-        distanceCountState.currentPlayer
-    );
-
-    const midX = (startVisualPos.x + endVisualPos.x) / 2;
-    const midY = (startVisualPos.y + endVisualPos.y) / 2;
-
-    // Determine what to display
-    const displayText = distance !== null ? distance.toString() : 'N/A';
-
-    // Background for text
-    const bgWidth = 50;
-    const textBg = createSVGElement('rect', {
-        x: midX - bgWidth / 2,
-        y: midY - 18,
-        width: bgWidth,
-        height: 36,
-        rx: 5,
-        fill: '#FFD700',
-        stroke: '#000',
-        'stroke-width': 2,
-        'pointer-events': 'none'
-    });
-    svg.appendChild(textBg);
-
-    // Distance text
-    const text = createSVGElement('text', {
-        x: midX,
-        y: midY + 6,
-        'text-anchor': 'middle',
-        'dominant-baseline': 'middle',
-        fill: '#000',
-        'font-size': '18',
-        'font-weight': 'bold',
-        'pointer-events': 'none'
-    });
-    text.textContent = displayText;
-    svg.appendChild(text);
-}
-
-// Initialize distance counter when page loads
-setTimeout(() => {
-    if (gameBoard) {
-        initializeDistanceCounter();
-    }
-}, 100);
 
 // Check if already authenticated on page load
 window.addEventListener('load', () => {

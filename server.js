@@ -1,7 +1,10 @@
 const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
-const io = require('socket.io')(http);
+const io = require('socket.io')(http, {
+  pingTimeout: 300000,   // 5 minutes before considering connection dead
+  pingInterval: 25000    // ping every 25 seconds
+});
 const path = require('path');
 
 const GAME_PASSWORD = process.env.GAME_PASSWORD || 'Berg270';
@@ -937,18 +940,32 @@ io.on('connection', (socket) => {
 
   // Get list of available tables
   socket.on('getTables', () => {
-    const tableList = Object.values(tables).map(t => ({
-      id: t.id,
-      hostName: t.hostName,
-      playerCount: Object.keys(t.players).length,
-      gameStarted: t.gameStarted,
-      seats: {
-        Seat1: t.players.Seat1 ? t.players.Seat1.name : null,
-        Seat2: t.players.Seat2 ? t.players.Seat2.name : null,
-        Seat3: t.players.Seat3 ? t.players.Seat3.name : null,
-        Seat4: t.players.Seat4 ? t.players.Seat4.name : null
+    const tableList = Object.values(tables).map(t => {
+      const seats = {};
+      const disconnectedSeats = {};
+      for (const seat of ['Seat1', 'Seat2', 'Seat3', 'Seat4']) {
+        if (t.players[seat]) {
+          seats[seat] = t.players[seat].name;
+          // Check actual socket liveness (handles refresh race condition)
+          const existingSocket = io.sockets.sockets.get(t.players[seat].socketId);
+          disconnectedSeats[seat] = t.players[seat].disconnected || !existingSocket;
+        } else {
+          seats[seat] = null;
+          disconnectedSeats[seat] = false;
+        }
       }
-    }));
+      const hasOpenSeat = Object.values(disconnectedSeats).some(d => d === true) ||
+        Object.values(seats).some(s => s === null);
+      return {
+        id: t.id,
+        hostName: t.hostName,
+        playerCount: Object.keys(t.players).length,
+        gameStarted: t.gameStarted,
+        seats,
+        disconnectedSeats,
+        hasOpenSeat
+      };
+    });
     socket.emit('tableList', tableList);
   });
 
@@ -1000,20 +1017,29 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Check if this is a reconnection attempt
+    // Check if seat is taken
     if (gameState.players[position]) {
       const existingPlayer = gameState.players[position];
 
-      if (existingPlayer.name === playerName && existingPlayer.disconnected) {
-        // Clear the disconnection timeout
+      // Check if existing socket is actually still connected (handles refresh race condition)
+      const existingSocket = io.sockets.sockets.get(existingPlayer.socketId);
+      const isActuallyDisconnected = existingPlayer.disconnected || !existingSocket;
+
+      if (isActuallyDisconnected) {
+        // Allow anyone to take over a disconnected seat (inherits hand/marbles)
         const timeoutKey = `${tableId}-${position}`;
         if (disconnectionTimeouts[timeoutKey]) {
           clearTimeout(disconnectionTimeouts[timeoutKey]);
           delete disconnectionTimeouts[timeoutKey];
         }
 
-        // Restore connection
+        // Clean up old socket mapping if it still exists
+        if (existingPlayer.socketId && existingPlayer.socketId !== socket.id) {
+          delete playerToTable[existingPlayer.socketId];
+        }
+
         existingPlayer.socketId = socket.id;
+        existingPlayer.name = playerName;
         existingPlayer.disconnected = false;
         playerToTable[socket.id] = tableId;
         socket.join(tableId);
@@ -1031,10 +1057,11 @@ io.on('connection', (socket) => {
           gameState.pendingSplitMove = null;
         }
 
-        console.log(`[RECONNECT] Player ${playerName} reconnected to table ${tableId} with ${existingPlayer.hand.length} cards`);
+        console.log(`[RECONNECT] ${playerName} took over ${position} at table ${tableId} with ${existingPlayer.hand.length} cards`);
         socket.emit('joinSuccess', { position, gameState });
         io.to(tableId).emit('playerReconnected', { position, playerName });
         io.to(tableId).emit('gameStateUpdate', gameState);
+        io.emit('tableListUpdated');
         return;
       } else {
         socket.emit('joinError', 'Position already taken');
@@ -1510,29 +1537,50 @@ io.on('connection', (socket) => {
 
       gameState.players[position].disconnected = true;
 
-      console.log(`Player ${playerName} at ${position} disconnected from table ${tableId} - waiting for reconnection...`);
+      console.log(`Player ${playerName} at ${position} disconnected from table ${tableId}`);
 
       io.to(tableId).emit('playerDisconnected', { position, playerName });
+      io.emit('tableListUpdated');
 
-      const timeoutKey = `${tableId}-${position}`;
-      disconnectionTimeouts[timeoutKey] = setTimeout(() => {
-        if (tables[tableId] && tables[tableId].players[position] && tables[tableId].players[position].disconnected) {
-          console.log(`Player ${playerName} at ${position} did not reconnect to table ${tableId} - removing`);
+      if (!gameState.gameStarted) {
+        // Pre-game: remove after 30 seconds (no game state to preserve)
+        const timeoutKey = `${tableId}-${position}`;
+        disconnectionTimeouts[timeoutKey] = setTimeout(() => {
+          if (tables[tableId] && tables[tableId].players[position] && tables[tableId].players[position].disconnected) {
+            console.log(`Player ${playerName} at ${position} removed from table ${tableId} (pre-game timeout)`);
 
-          delete tables[tableId].players[position];
-          tables[tableId].playerOrder = tables[tableId].playerOrder.filter(p => p !== position);
-          delete disconnectionTimeouts[timeoutKey];
+            delete tables[tableId].players[position];
+            tables[tableId].playerOrder = tables[tableId].playerOrder.filter(p => p !== position);
+            delete disconnectionTimeouts[timeoutKey];
 
-          io.to(tableId).emit('playerRemoved', { position, playerName });
-          io.to(tableId).emit('gameStateUpdate', tables[tableId]);
+            io.to(tableId).emit('playerRemoved', { position, playerName });
+            io.to(tableId).emit('gameStateUpdate', tables[tableId]);
 
-          // If table is empty, delete it
-          if (Object.keys(tables[tableId].players).length === 0) {
-            delete tables[tableId];
+            if (Object.keys(tables[tableId].players).length === 0) {
+              delete tables[tableId];
+            }
             io.emit('tableListUpdated');
           }
+        }, 30000);
+      } else {
+        // During active game: if it's their turn, auto-skip
+        const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+        if (currentPlayer === position) {
+          console.log(`[DISCONNECT] ${playerName} disconnected on their turn, auto-skipping`);
+          // Auto-discard their first card
+          const player = gameState.players[position];
+          if (player.hand.length > 0) {
+            const card = player.hand.splice(0, 1)[0];
+            player.discardPile.push(card);
+            addMoveToLog(gameState, position, card, 'discarded', []);
+            dealCards(gameState, position, 1);
+          }
+          gameState.pendingSplitMove = null;
+          gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % 4;
+          skipDisconnectedPlayers(gameState);
+          io.to(tableId).emit('gameStateUpdate', gameState);
         }
-      }, 30000);
+      }
     }
 
     delete playerToTable[socket.id];
@@ -1935,6 +1983,37 @@ function nextTurn(gameState) {
   gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % 4;
   const newPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
   console.log(`[TURN] Turn changed: ${previousPlayer} (index ${previousIndex}) -> ${newPlayer} (index ${gameState.currentPlayerIndex})`);
+
+  // Auto-skip disconnected players (discard a card for them and advance)
+  skipDisconnectedPlayers(gameState);
+}
+
+function skipDisconnectedPlayers(gameState) {
+  // Skip up to 3 disconnected players in a row (avoid infinite loop if all disconnected)
+  for (let i = 0; i < 3; i++) {
+    const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+    const player = gameState.players[currentPlayer];
+    if (!player || !player.disconnected) break;
+
+    // Check if socket is actually gone (not just marked)
+    const existingSocket = io.sockets.sockets.get(player.socketId);
+    if (existingSocket) break; // Socket is alive, don't skip
+
+    console.log(`[TURN-SKIP] Auto-skipping disconnected player ${currentPlayer} (${player.name})`);
+
+    // Auto-discard their first card
+    if (player.hand.length > 0) {
+      const card = player.hand.splice(0, 1)[0];
+      player.discardPile.push(card);
+      addMoveToLog(gameState, currentPlayer, card, 'discarded', []);
+      dealCards(gameState, currentPlayer, 1);
+    }
+
+    gameState.pendingSplitMove = null;
+    gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % 4;
+    const nextPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+    console.log(`[TURN-SKIP] Advanced to ${nextPlayer}`);
+  }
 }
 
 function logTurnState(gameState, context) {
