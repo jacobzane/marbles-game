@@ -468,8 +468,8 @@ function canPlayCard(gameState, position, card) {
   }
 
   if (cardValue === '4') {
-    // 4: Move backward 4 spaces
-    return canMoveAnyMarbleBackward(gameState, position, 4);
+    // 4: Move forward 4 spaces
+    return canMoveAnyMarbleForward(gameState, position, 4);
   }
 
   if (cardValue === '7') {
@@ -482,7 +482,12 @@ function canPlayCard(gameState, position, card) {
     return canMove9Card(gameState, position);
   }
 
-  // Regular number cards (2, 3, 5, 6, 8, 10)
+  if (cardValue === '8') {
+    // 8: Move backward 8 spaces
+    return canMoveAnyMarbleBackward(gameState, position, 8);
+  }
+
+  // Regular number cards (2, 3, 5, 6, 10)
   const spaces = parseInt(cardValue);
   if (!isNaN(spaces)) {
     return canMoveAnyMarbleForward(gameState, position, spaces);
