@@ -279,7 +279,6 @@ socket.on('gameStateUpdate', (state) => {
         updateTurnGlow();
     }, 1500);
 
-    console.log(`[GAMESTATE UPDATE] changes: ${changes.length}, isAnimating: ${isAnimating}`);
     if (changes.length > 0 && !isAnimating) {
         // Hide marbles that are moving (they'll be animated)
         renderBoardWithHiddenMarbles(changes);
@@ -294,27 +293,22 @@ socket.on('gameStateUpdate', (state) => {
             renderBoard();
         });
     } else {
-        // Check for discard animation (no marble changes, but new discard in movesLog)
+        // No marble animation - render immediately (turn glow still delayed)
+        renderGame();
+
+        // Check for discard animation AFTER rendering so the animated element isn't wiped
         const newMovesLogLength = gameState.movesLog ? gameState.movesLog.length : 0;
-        console.log(`[DISCARD CHECK] oldMovesLogLength: ${oldMovesLogLength}, newMovesLogLength: ${newMovesLogLength}, changes: ${changes.length}`);
-        if (newMovesLogLength > 0) {
-            const latestMove = gameState.movesLog[0]; // movesLog is unshift'd, newest first
-            console.log(`[DISCARD CHECK] latestMove: action=${latestMove.action}, player=${latestMove.player}`);
-        }
         if (newMovesLogLength > oldMovesLogLength && gameState.movesLog.length > 0) {
             const latestMove = gameState.movesLog[0];
             if (latestMove.action === 'discarded') {
                 const discardingPlayer = gameState.playerOrder.find(seat =>
                     gameState.players[seat] && gameState.players[seat].name === latestMove.player
                 );
-                console.log(`[DISCARD ANIM] Triggering for ${discardingPlayer} (name: ${latestMove.player})`);
                 if (discardingPlayer) {
                     playDiscardAnimation(discardingPlayer);
                 }
             }
         }
-        // No marble animation - render immediately (turn glow still delayed)
-        renderGame();
     }
 });
 
