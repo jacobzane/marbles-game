@@ -1847,25 +1847,28 @@ function playDiscardAnimation(discardingPlayer) {
     // Card dimensions
     const cardW = 50, cardH = 70;
 
-    // Determine start (player's side of board) and end (name label at edge)
+    // Determine start (screen edge) and end (player name label on board)
     let startX, startY, endX, endY;
     if (relativeSeatDiff === 0) {
-        // Bottom (me)
-        startX = 400; startY = 620;
+        // Bottom (me) - from below screen edge toward name
+        startX = 400; startY = 870;
         endX = 400; endY = 790;
     } else if (relativeSeatDiff === 2) {
-        // Top (across)
-        startX = 400; startY = 180;
+        // Top (across) - from above screen edge toward name
+        startX = 400; startY = -70;
         endX = 400; endY = 10;
     } else if (relativeSeatDiff === 1) {
-        // Left
-        startX = 180; startY = 400;
+        // Left - from left screen edge toward name
+        startX = -70; startY = 400;
         endX = 10; endY = 400;
     } else {
-        // Right
-        startX = 620; startY = 400;
+        // Right - from right screen edge toward name
+        startX = 870; startY = 400;
         endX = 790; endY = 400;
     }
+
+    // Allow card to start outside the SVG viewBox
+    svg.style.overflow = 'visible';
 
     // Create card group
     const cardGroup = createSVGElement('g', {});
@@ -1938,6 +1941,7 @@ function playDiscardAnimation(discardingPlayer) {
             requestAnimationFrame(animate);
         } else {
             cardGroup.remove();
+            svg.style.overflow = '';
         }
     }
 
