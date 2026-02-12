@@ -161,6 +161,46 @@
                     <button id="discardBtn" class="btn btn-discard" disabled>Discard Card</button>
                 </div>
 
+                <!-- Rules Panel -->
+                <div id="rulesPanel" class="rules-panel-floating">
+                    <button id="rulesToggle" class="rules-toggle">Rules</button>
+                    <div id="rulesPanelContent" class="rules-panel">
+                        <div class="rules-header">Game Rules</div>
+                        <div class="rules-content">
+                            <div class="rules-section">
+                                <div class="rules-section-title">Card Rules</div>
+                                <div class="rules-item"><span class="rules-card">A</span> Enter board from start <em>or</em> move forward 1</div>
+                                <div class="rules-item"><span class="rules-card">2</span> Move forward 2</div>
+                                <div class="rules-item"><span class="rules-card">3</span> Move forward 3</div>
+                                <div class="rules-item"><span class="rules-card">4</span> Move backward 4</div>
+                                <div class="rules-item"><span class="rules-card">5</span> Move forward 5</div>
+                                <div class="rules-item"><span class="rules-card">6</span> Move forward 6</div>
+                                <div class="rules-item"><span class="rules-card">7</span> Split forward between 2 marbles (must total 7)</div>
+                                <div class="rules-item"><span class="rules-card">8</span> Move backward 8</div>
+                                <div class="rules-item"><span class="rules-card">9</span> Split: one marble forward 1-8, another backward the rest (must total 9, two different marbles)</div>
+                                <div class="rules-item"><span class="rules-card">10</span> Move forward 10</div>
+                                <div class="rules-item"><span class="rules-card">J Q K</span> Enter board from start <em>or</em> move forward 10</div>
+                                <div class="rules-item"><span class="rules-card">Joker</span> Place your marble on any opponent's marble, sending them away</div>
+                            </div>
+                            <div class="rules-section">
+                                <div class="rules-section-title">Landing Effects</div>
+                                <div class="rules-item">Land on an <strong>opponent</strong>: send them back to start</div>
+                                <div class="rules-item">Land on your <strong>teammate</strong>: bump them to their home entry</div>
+                            </div>
+                            <div class="rules-section">
+                                <div class="rules-section-title">General Rules</div>
+                                <div class="rules-item">Teams: Seats 1 & 3 vs Seats 2 & 4</div>
+                                <div class="rules-item">Each player holds 5 cards; draw 1 after each play</div>
+                                <div class="rules-item">You must play a card if any legal move exists</div>
+                                <div class="rules-item">Discard if no legal move is possible</div>
+                                <div class="rules-item">You cannot land on or pass through your own marbles</div>
+                                <div class="rules-item">Once all 5 of your marbles are home, you control your teammate's marbles</div>
+                                <div class="rules-item">Win: both teammates get all 5 marbles into their home zones</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Floating Moves Log -->
                 <div id="movesLog" class="moves-log-floating">
                     <button id="movesLogToggle" class="moves-log-toggle">📜</button>

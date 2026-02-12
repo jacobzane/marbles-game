@@ -112,6 +112,17 @@ if (debugPanelToggle && debugPanelContent) {
     });
 }
 
+// Rules panel elements
+const rulesToggle = document.getElementById('rulesToggle');
+const rulesPanelContent = document.getElementById('rulesPanelContent');
+
+// Toggle rules panel
+if (rulesToggle && rulesPanelContent) {
+    rulesToggle.addEventListener('click', () => {
+        rulesPanelContent.classList.toggle('visible');
+    });
+}
+
 // Password submission
 passwordSubmitBtn.addEventListener('click', () => {
     const password = gamePasswordInput.value.trim();

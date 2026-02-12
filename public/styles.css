@@ -508,6 +508,122 @@ body {
     color: #f87171;
 }
 
+/* Rules Panel */
+.rules-panel-floating {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 500;
+}
+
+.rules-toggle {
+    background: rgba(102, 126, 234, 0.9);
+    border: none;
+    border-radius: 8px;
+    padding: 10px 15px;
+    font-size: 0.95rem;
+    font-weight: bold;
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s ease;
+}
+
+.rules-toggle:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+.rules-panel {
+    position: absolute;
+    top: 50px;
+    left: 0;
+    width: 340px;
+    max-height: 70vh;
+    background: rgba(26, 26, 46, 0.97);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    display: none;
+}
+
+.rules-panel.visible {
+    display: block;
+}
+
+.rules-header {
+    background: rgba(102, 126, 234, 0.4);
+    color: #fff;
+    padding: 10px;
+    font-weight: bold;
+    font-size: 0.95rem;
+    text-align: center;
+}
+
+.rules-content {
+    max-height: calc(70vh - 40px);
+    overflow-y: auto;
+    padding: 10px 12px;
+}
+
+.rules-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.rules-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.rules-content::-webkit-scrollbar-thumb {
+    background: rgba(102, 126, 234, 0.5);
+    border-radius: 3px;
+}
+
+.rules-section {
+    margin-bottom: 12px;
+}
+
+.rules-section:last-child {
+    margin-bottom: 0;
+}
+
+.rules-section-title {
+    color: #667eea;
+    font-weight: bold;
+    font-size: 0.9rem;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(102, 126, 234, 0.3);
+}
+
+.rules-item {
+    color: #ccc;
+    font-size: 0.82rem;
+    padding: 3px 0;
+    line-height: 1.4;
+}
+
+.rules-item em {
+    color: #aaa;
+}
+
+.rules-item strong {
+    color: #fff;
+}
+
+.rules-card {
+    display: inline-block;
+    background: rgba(102, 126, 234, 0.25);
+    color: #fff;
+    font-weight: bold;
+    font-size: 0.8rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-right: 5px;
+    min-width: 20px;
+    text-align: center;
+}
+
 .card {
     width: 70px;
     height: 100px;
@@ -752,6 +868,11 @@ body {
         padding: 5px;
     }
 
+    .rules-panel-floating {
+        top: 10px;
+        left: 10px;
+    }
+
     .moves-log-floating {
         top: 10px;
         right: 10px;
@@ -808,6 +929,16 @@ body {
     /* Larger touch targets for marbles on mobile */
     .marble-hit-area {
         r: 20;
+    }
+
+    .rules-toggle {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+    }
+
+    .rules-panel {
+        width: calc(100vw - 40px);
+        left: -10px;
     }
 
     .moves-log-toggle {
