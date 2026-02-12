@@ -13,7 +13,9 @@ let splitMoveState = null;
 // State for home choice on regular cards
 let homeChoiceState = null;
 
-// Disconnect overlay helpers
+// Disconnect/reconnect state
+let isReconnecting = false;
+
 function showDisconnectOverlay() {
     const overlay = document.getElementById('disconnectOverlay');
     if (overlay) overlay.classList.add('active');
@@ -25,20 +27,26 @@ function hideDisconnectOverlay() {
 }
 
 socket.on('disconnect', () => {
+    console.log('[SOCKET] Disconnected');
     showDisconnectOverlay();
 });
 
 socket.on('connect', () => {
-    hideDisconnectOverlay();
+    console.log('[SOCKET] Connected, socket id:', socket.id);
 
     // If we were in a game, re-join to map our new socket ID on the server
     if (currentTableId && myPlayerName && myPosition) {
+        isReconnecting = true;
         console.log(`[RECONNECT] Re-joining ${currentTableId} as ${myPlayerName} (${myPosition})`);
         socket.emit('joinTable', {
             tableId: currentTableId,
             playerName: myPlayerName,
             position: myPosition
         });
+        // Overlay stays visible until joinSuccess or joinError
+    } else {
+        // Not in a game, just hide overlay
+        hideDisconnectOverlay();
     }
 });
 
@@ -138,6 +146,19 @@ socket.on('joinSuccess', (data) => {
     currentTableId = data.gameState.id;
     myPlayerName = gameState.players[data.position].name;
 
+    // Clear reconnection state
+    if (isReconnecting) {
+        console.log(`[RECONNECT] Successfully rejoined ${currentTableId} as ${myPlayerName} (${myPosition})`);
+        isReconnecting = false;
+        // Reset client state that could be stale from before disconnect
+        isAnimating = false;
+        splitMoveState = null;
+        homeChoiceState = null;
+        selectedCard = null;
+        selectedMarbles = [];
+    }
+    hideDisconnectOverlay();
+
     // Handle reconnection to different game states
     if (gameState.gameStarted) {
         // Reconnecting to an active game
@@ -156,7 +177,27 @@ socket.on('joinSuccess', (data) => {
 });
 
 socket.on('joinError', (message) => {
-    loginError.textContent = message;
+    console.log(`[JOIN ERROR] ${message}, isReconnecting: ${isReconnecting}`);
+
+    if (isReconnecting) {
+        // Auto-rejoin failed (server probably restarted and lost state)
+        console.log('[RECONNECT] Failed to rejoin - clearing stale session');
+        isReconnecting = false;
+        currentTableId = null;
+        myPosition = null;
+        myPlayerName = null;
+        gameState = null;
+        splitMoveState = null;
+        homeChoiceState = null;
+        selectedCard = null;
+        isAnimating = false;
+        hideDisconnectOverlay();
+        showScreen('tableLobbyScreen');
+        socket.emit('getTables');
+        showNotification('Your game session was lost. The server may have restarted.', 'error');
+    } else {
+        loginError.textContent = message;
+    }
 });
 
 socket.on('lobbyReady', (state) => {
@@ -193,6 +234,9 @@ socket.on('gameStarted', (state) => {
 socket.on('gameStateUpdate', (state) => {
     const previousIndex = gameState ? gameState.currentPlayerIndex : null;
     const previousPlayer = gameState ? gameState.playerOrder[gameState.currentPlayerIndex] : null;
+
+    // Capture old moves log length to detect new discard entries
+    const oldMovesLogLength = gameState && gameState.movesLog ? gameState.movesLog.length : 0;
 
     // Capture old marble positions before updating state
     const oldPositions = captureMarblePositions();
@@ -249,7 +293,21 @@ socket.on('gameStateUpdate', (state) => {
             renderBoard();
         });
     } else {
-        // No animation - render immediately (turn glow still delayed)
+        // Check for discard animation (no marble changes, but new discard in movesLog)
+        const newMovesLogLength = gameState.movesLog ? gameState.movesLog.length : 0;
+        if (newMovesLogLength > oldMovesLogLength && gameState.movesLog.length > 0) {
+            const latestMove = gameState.movesLog[0]; // movesLog is unshift'd, newest first
+            if (latestMove.action === 'discarded') {
+                // Find the seat position for the player who discarded
+                const discardingPlayer = gameState.playerOrder.find(seat =>
+                    gameState.players[seat] && gameState.players[seat].name === latestMove.player
+                );
+                if (discardingPlayer) {
+                    playDiscardAnimation(discardingPlayer);
+                }
+            }
+        }
+        // No marble animation - render immediately (turn glow still delayed)
         renderGame();
     }
 });
@@ -1771,6 +1829,115 @@ function animateDirectLine(marble, startPos, endPos, callback) {
             requestAnimationFrame(animate);
         } else {
             if (callback) callback();
+        }
+    }
+
+    requestAnimationFrame(animate);
+}
+
+// Play discard animation - spinning, dissolving card from player's side toward their name
+function playDiscardAnimation(discardingPlayer) {
+    const svg = document.getElementById('gameBoard');
+    if (!svg || !gameState) return;
+
+    const seatIndex = gameState.playerOrder.indexOf(discardingPlayer);
+    const mySeatIndex = gameState.playerOrder.indexOf(myPosition);
+    const relativeSeatDiff = (seatIndex - mySeatIndex + 4) % 4;
+
+    // Card dimensions
+    const cardW = 50, cardH = 70;
+
+    // Determine start (player's side of board) and end (name label at edge)
+    let startX, startY, endX, endY;
+    if (relativeSeatDiff === 0) {
+        // Bottom (me)
+        startX = 400; startY = 620;
+        endX = 400; endY = 790;
+    } else if (relativeSeatDiff === 2) {
+        // Top (across)
+        startX = 400; startY = 180;
+        endX = 400; endY = 10;
+    } else if (relativeSeatDiff === 1) {
+        // Left
+        startX = 180; startY = 400;
+        endX = 10; endY = 400;
+    } else {
+        // Right
+        startX = 620; startY = 400;
+        endX = 790; endY = 400;
+    }
+
+    // Create card group
+    const cardGroup = createSVGElement('g', {});
+
+    // Card back (red rectangle)
+    const cardBack = createSVGElement('rect', {
+        x: -cardW / 2, y: -cardH / 2,
+        width: cardW, height: cardH,
+        rx: 5,
+        fill: '#c0392b',
+        stroke: '#922b21',
+        'stroke-width': 2
+    });
+    cardGroup.appendChild(cardBack);
+
+    // Inner pattern
+    const inner1 = createSVGElement('rect', {
+        x: -cardW / 2 + 6, y: -cardH / 2 + 6,
+        width: cardW - 12, height: cardH - 12,
+        rx: 3,
+        fill: 'none',
+        stroke: '#ecf0f1',
+        'stroke-width': 1.5
+    });
+    cardGroup.appendChild(inner1);
+
+    const inner2 = createSVGElement('rect', {
+        x: -cardW / 2 + 12, y: -cardH / 2 + 12,
+        width: cardW - 24, height: cardH - 24,
+        rx: 2,
+        fill: 'none',
+        stroke: '#ecf0f1',
+        'stroke-width': 1.5
+    });
+    cardGroup.appendChild(inner2);
+
+    // Set initial position
+    cardGroup.setAttribute('transform', `translate(${startX}, ${startY})`);
+    svg.appendChild(cardGroup);
+
+    // Animate
+    const duration = 1200;
+    const totalSpins = 2.5;
+    const startTime = performance.now();
+
+    function animate(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+
+        // Ease out for movement
+        const eased = 1 - Math.pow(1 - progress, 2);
+
+        const x = startX + (endX - startX) * eased;
+        const y = startY + (endY - startY) * eased;
+
+        // Continuous spin
+        const rotation = progress * 360 * totalSpins;
+
+        // Fade: start fading at 30% through, fully gone by end
+        const opacity = progress < 0.3 ? 1 : Math.max(0, 1 - (progress - 0.3) / 0.7);
+
+        cardGroup.setAttribute('transform', `translate(${x}, ${y}) rotate(${rotation})`);
+        cardGroup.setAttribute('opacity', opacity);
+
+        // Scale down slightly as it dissolves
+        const scale = 1 - progress * 0.3;
+        cardGroup.setAttribute('transform', `translate(${x}, ${y}) rotate(${rotation}) scale(${scale})`);
+
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            cardGroup.remove();
         }
     }
 

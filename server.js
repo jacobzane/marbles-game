@@ -2,7 +2,7 @@ const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http, {
-  pingTimeout: 300000,   // 5 minutes before considering connection dead
+  pingTimeout: 60000,    // 60 seconds before considering connection dead
   pingInterval: 25000    // ping every 25 seconds
 });
 const path = require('path');
@@ -1021,12 +1021,23 @@ io.on('connection', (socket) => {
     if (gameState.players[position]) {
       const existingPlayer = gameState.players[position];
 
-      // Check if existing socket is actually still connected (handles refresh race condition)
+      // Check if existing socket is actually still connected
       const existingSocket = io.sockets.sockets.get(existingPlayer.socketId);
       const isActuallyDisconnected = existingPlayer.disconnected || !existingSocket;
 
-      if (isActuallyDisconnected) {
-        // Allow anyone to take over a disconnected seat (inherits hand/marbles)
+      // Allow takeover if: seat is disconnected, OR same player reconnecting with a new socket
+      // (handles the case where pingTimeout hasn't expired yet but the player's transport died)
+      const isSamePlayer = existingPlayer.name === playerName && existingPlayer.socketId !== socket.id;
+
+      if (isActuallyDisconnected || isSamePlayer) {
+        // If old socket is still alive (stale), force-disconnect it
+        if (existingSocket && existingPlayer.socketId !== socket.id) {
+          console.log(`[RECONNECT] Force-disconnecting stale socket ${existingPlayer.socketId} for ${playerName}`);
+          delete playerToTable[existingPlayer.socketId];
+          existingSocket.leave(tableId);
+          existingSocket.disconnect(true);
+        }
+
         const timeoutKey = `${tableId}-${position}`;
         if (disconnectionTimeouts[timeoutKey]) {
           clearTimeout(disconnectionTimeouts[timeoutKey]);
@@ -1057,7 +1068,9 @@ io.on('connection', (socket) => {
           gameState.pendingSplitMove = null;
         }
 
-        console.log(`[RECONNECT] ${playerName} took over ${position} at table ${tableId} with ${existingPlayer.hand.length} cards`);
+        const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+        const currentPlayerName = gameState.players[currentPlayer]?.name || 'Unknown';
+        console.log(`[RECONNECT] ${playerName} took over ${position} at table ${tableId} (hand: ${existingPlayer.hand.length} cards, currentTurn: ${currentPlayer}/${currentPlayerName}, oldSocketAlive: ${!!existingSocket})`);
         socket.emit('joinSuccess', { position, gameState });
         io.to(tableId).emit('playerReconnected', { position, playerName });
         io.to(tableId).emit('gameStateUpdate', gameState);
@@ -1537,49 +1550,56 @@ io.on('connection', (socket) => {
 
       gameState.players[position].disconnected = true;
 
-      console.log(`Player ${playerName} at ${position} disconnected from table ${tableId}`);
+      console.log(`[DISCONNECT] ${playerName} at ${position} disconnected from table ${tableId}`);
 
       io.to(tableId).emit('playerDisconnected', { position, playerName });
       io.emit('tableListUpdated');
 
-      if (!gameState.gameStarted) {
-        // Pre-game: remove after 30 seconds (no game state to preserve)
-        const timeoutKey = `${tableId}-${position}`;
-        disconnectionTimeouts[timeoutKey] = setTimeout(() => {
-          if (tables[tableId] && tables[tableId].players[position] && tables[tableId].players[position].disconnected) {
-            console.log(`Player ${playerName} at ${position} removed from table ${tableId} (pre-game timeout)`);
+      try {
+        if (!gameState.gameStarted) {
+          // Pre-game: remove after 30 seconds (no game state to preserve)
+          const timeoutKey = `${tableId}-${position}`;
+          disconnectionTimeouts[timeoutKey] = setTimeout(() => {
+            if (tables[tableId] && tables[tableId].players[position] && tables[tableId].players[position].disconnected) {
+              console.log(`[DISCONNECT] ${playerName} at ${position} removed from table ${tableId} (pre-game timeout)`);
 
-            delete tables[tableId].players[position];
-            tables[tableId].playerOrder = tables[tableId].playerOrder.filter(p => p !== position);
-            delete disconnectionTimeouts[timeoutKey];
+              delete tables[tableId].players[position];
+              tables[tableId].playerOrder = tables[tableId].playerOrder.filter(p => p !== position);
+              delete disconnectionTimeouts[timeoutKey];
 
-            io.to(tableId).emit('playerRemoved', { position, playerName });
-            io.to(tableId).emit('gameStateUpdate', tables[tableId]);
+              io.to(tableId).emit('playerRemoved', { position, playerName });
+              io.to(tableId).emit('gameStateUpdate', tables[tableId]);
 
-            if (Object.keys(tables[tableId].players).length === 0) {
-              delete tables[tableId];
+              if (Object.keys(tables[tableId].players).length === 0) {
+                delete tables[tableId];
+              }
+              io.emit('tableListUpdated');
             }
-            io.emit('tableListUpdated');
+          }, 30000);
+        } else {
+          // During active game: if it's their turn, auto-skip ONLY this player
+          // Don't call skipDisconnectedPlayers here - if multiple players disconnect
+          // simultaneously, each disconnect handler handles its own player.
+          // skipDisconnectedPlayers is called in nextTurn() for normal play flow.
+          const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+          if (currentPlayer === position) {
+            console.log(`[DISCONNECT] ${playerName} disconnected on their turn, auto-skipping`);
+            const player = gameState.players[position];
+            if (player.hand.length > 0) {
+              const card = player.hand.splice(0, 1)[0];
+              player.discardPile.push(card);
+              addMoveToLog(gameState, position, card, 'discarded', []);
+              dealCards(gameState, position, 1);
+            }
+            gameState.pendingSplitMove = null;
+            gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % 4;
+            const nextPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
+            console.log(`[DISCONNECT] Turn advanced to ${nextPlayer} (${gameState.players[nextPlayer]?.name})`);
+            io.to(tableId).emit('gameStateUpdate', gameState);
           }
-        }, 30000);
-      } else {
-        // During active game: if it's their turn, auto-skip
-        const currentPlayer = gameState.playerOrder[gameState.currentPlayerIndex];
-        if (currentPlayer === position) {
-          console.log(`[DISCONNECT] ${playerName} disconnected on their turn, auto-skipping`);
-          // Auto-discard their first card
-          const player = gameState.players[position];
-          if (player.hand.length > 0) {
-            const card = player.hand.splice(0, 1)[0];
-            player.discardPile.push(card);
-            addMoveToLog(gameState, position, card, 'discarded', []);
-            dealCards(gameState, position, 1);
-          }
-          gameState.pendingSplitMove = null;
-          gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % 4;
-          skipDisconnectedPlayers(gameState);
-          io.to(tableId).emit('gameStateUpdate', gameState);
         }
+      } catch (err) {
+        console.error(`[DISCONNECT ERROR] Error in disconnect handler for ${playerName} at ${position}:`, err.stack || err);
       }
     }
 
@@ -2021,6 +2041,16 @@ function logTurnState(gameState, context) {
   const currentPlayerName = gameState.players[currentPlayer]?.name || 'Unknown';
   console.log(`[DEBUG ${context}] Current turn: ${currentPlayer} (${currentPlayerName}), index: ${gameState.currentPlayerIndex}, playerOrder: ${gameState.playerOrder.join(', ')}`);
 }
+
+// ============ PROCESS ERROR HANDLING ============
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err.stack || err);
+  // Don't exit - try to keep the game running
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled promise rejection:', reason);
+});
 
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => {
