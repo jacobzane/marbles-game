@@ -6,8 +6,21 @@ const io = require('socket.io')(http, {
   pingInterval: 25000    // ping every 25 seconds
 });
 const path = require('path');
+const fs = require('fs');
 
 const GAME_PASSWORD = process.env.GAME_PASSWORD || 'Berg270';
+
+// File-based crash logging for diagnosing server issues
+function logError(context, err) {
+  const timestamp = new Date().toISOString();
+  const message = `[${timestamp}] [${context}] ${err.stack || err}\n`;
+  console.error(message);
+  try {
+    fs.appendFileSync('server-errors.log', message);
+  } catch (e) {
+    // If we can't write to file, at least console.error got it
+  }
+}
 
 app.use(express.static('public'));
 
@@ -931,6 +944,19 @@ function startGame(gameState, startingPlayer) {
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
+
+  // Wrap all socket event handlers in try-catch to prevent server crashes
+  const origOn = socket.on.bind(socket);
+  socket.on = (event, handler) => {
+    origOn(event, (...args) => {
+      try {
+        handler(...args);
+      } catch (err) {
+        logError(`socket:${event}`, err);
+        socket.emit('error', 'Server error - please try again');
+      }
+    });
+  };
 
   socket.on('checkPassword', (data) => {
     const { password } = data;
@@ -2049,12 +2075,11 @@ function logTurnState(gameState, context) {
 
 // ============ PROCESS ERROR HANDLING ============
 process.on('uncaughtException', (err) => {
-  console.error('[FATAL] Uncaught exception:', err.stack || err);
-  // Don't exit - try to keep the game running
+  logError('uncaughtException', err);
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[FATAL] Unhandled promise rejection:', reason);
+  logError('unhandledRejection', reason instanceof Error ? reason : new Error(String(reason)));
 });
 
 const PORT = process.env.PORT || 3000;
