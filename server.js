@@ -11,15 +11,13 @@ const fs = require('fs');
 const GAME_PASSWORD = process.env.GAME_PASSWORD || 'Berg270';
 
 // File-based crash logging for diagnosing server issues
+// Uses async writes to prevent OneDrive sync locks from freezing the event loop
+const LOG_FILE = 'server-errors.log';
 function logError(context, err) {
   const timestamp = new Date().toISOString();
   const message = `[${timestamp}] [${context}] ${err.stack || err}\n`;
   console.error(message);
-  try {
-    fs.appendFileSync('server-errors.log', message);
-  } catch (e) {
-    // If we can't write to file, at least console.error got it
-  }
+  fs.appendFile(LOG_FILE, message, () => {}); // async, non-blocking
 }
 
 app.use(express.static('public'));
@@ -355,7 +353,8 @@ function countMarblesOnTrack(gameState, actingPlayer) {
 function isPathBlocked(gameState, player, startPos, endPos, direction = 'forward') {
   if (direction === 'forward') {
     let current = (startPos + 1) % 72;
-    while (current !== endPos) {
+    let safety = 0;
+    while (current !== endPos && safety++ < 72) {
       const occupant = getMarbleOnTrack(gameState, current);
       if (occupant && occupant.player === player) {
         return true;
@@ -365,7 +364,8 @@ function isPathBlocked(gameState, player, startPos, endPos, direction = 'forward
   } else {
     let current = startPos - 1;
     if (current < 0) current += 72;
-    while (current !== endPos) {
+    let safety = 0;
+    while (current !== endPos && safety++ < 72) {
       const occupant = getMarbleOnTrack(gameState, current);
       if (occupant && occupant.player === player) {
         return true;
@@ -410,7 +410,8 @@ function isHomePathBlockedFromStart(gameState, player, targetHomeIndex) {
 
 function isPathBlockedIncludingHomeEntry(gameState, player, startPos, endPos, homeEntry) {
   let current = (startPos + 1) % 72;
-  while (current !== endPos) {
+  let safety = 0;
+  while (current !== endPos && safety++ < 72) {
     if (current !== homeEntry) {
       const occupant = getMarbleOnTrack(gameState, current);
       if (occupant && occupant.player === player) {
@@ -2103,7 +2104,7 @@ process.on('unhandledRejection', (reason) => {
 process.on('exit', (code) => {
   const timestamp = new Date().toISOString();
   const msg = `[${timestamp}] [process:exit] Process exiting with code ${code}\n`;
-  try { fs.appendFileSync('server-errors.log', msg); } catch(e) {}
+  try { fs.appendFileSync(LOG_FILE, msg); } catch(e) {}
 });
 
 process.on('SIGTERM', () => {
@@ -2119,7 +2120,7 @@ setInterval(() => {
   const timestamp = new Date().toISOString();
   const tableCount = Object.keys(tables).length;
   const msg = `[${timestamp}] [heartbeat] alive, ${tableCount} active table(s)\n`;
-  try { fs.appendFileSync('server-errors.log', msg); } catch(e) {}
+  fs.appendFile(LOG_FILE, msg, () => {}); // async, non-blocking
 }, 60000);
 
 const PORT = process.env.PORT || 3000;
