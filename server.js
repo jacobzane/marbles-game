@@ -953,9 +953,9 @@ io.on('connection', (socket) => {
         handler(...args);
       } catch (err) {
         logError(`socket:${event}`, err);
-        socket.emit('error', 'Server error - please try again');
       }
     });
+    return socket; // Preserve chaining for Socket.io internals
   };
 
   socket.on('checkPassword', (data) => {
@@ -2098,6 +2098,29 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   logError('unhandledRejection', reason instanceof Error ? reason : new Error(String(reason)));
 });
+
+// Log when the process is about to exit so we can diagnose mystery crashes
+process.on('exit', (code) => {
+  const timestamp = new Date().toISOString();
+  const msg = `[${timestamp}] [process:exit] Process exiting with code ${code}\n`;
+  try { fs.appendFileSync('server-errors.log', msg); } catch(e) {}
+});
+
+process.on('SIGTERM', () => {
+  logError('process:SIGTERM', new Error('Received SIGTERM signal'));
+});
+
+process.on('SIGINT', () => {
+  logError('process:SIGINT', new Error('Received SIGINT signal'));
+});
+
+// Heartbeat - log every 60s so we can see when the server was last alive
+setInterval(() => {
+  const timestamp = new Date().toISOString();
+  const tableCount = Object.keys(tables).length;
+  const msg = `[${timestamp}] [heartbeat] alive, ${tableCount} active table(s)\n`;
+  try { fs.appendFileSync('server-errors.log', msg); } catch(e) {}
+}, 60000);
 
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => {
