@@ -22,6 +22,11 @@ function logError(context, err) {
 
 app.use(express.static('public'));
 
+// Health check endpoint - also serves as keepalive target for Render free tier
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', tables: Object.keys(tables).length });
+});
+
 // Multi-table support
 let tables = {};  // Map of tableId -> gameState
 let playerToTable = {};  // Map of socketId -> tableId

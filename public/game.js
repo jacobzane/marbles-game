@@ -1,5 +1,8 @@
 const socket = io();
 
+// Keepalive ping every 5 minutes to prevent Render free tier from spinning down
+setInterval(() => { fetch('/health').catch(() => {}); }, 5 * 60 * 1000);
+
 let gameState = null;
 let myPosition = null;
 let myPlayerName = null;
