@@ -1591,20 +1591,24 @@ io.on('connection', (socket) => {
           // Pre-game: remove after 30 seconds (no game state to preserve)
           const timeoutKey = `${tableId}-${position}`;
           disconnectionTimeouts[timeoutKey] = setTimeout(() => {
-            if (tables[tableId] && tables[tableId].players[position] && tables[tableId].players[position].disconnected) {
-              console.log(`[DISCONNECT] ${playerName} at ${position} removed from table ${tableId} (pre-game timeout)`);
+            try {
+              if (tables[tableId] && tables[tableId].players[position] && tables[tableId].players[position].disconnected) {
+                console.log(`[DISCONNECT] ${playerName} at ${position} removed from table ${tableId} (pre-game timeout)`);
 
-              delete tables[tableId].players[position];
-              tables[tableId].playerOrder = tables[tableId].playerOrder.filter(p => p !== position);
-              delete disconnectionTimeouts[timeoutKey];
+                delete tables[tableId].players[position];
+                tables[tableId].playerOrder = tables[tableId].playerOrder.filter(p => p !== position);
+                delete disconnectionTimeouts[timeoutKey];
 
-              io.to(tableId).emit('playerRemoved', { position, playerName });
-              io.to(tableId).emit('gameStateUpdate', tables[tableId]);
+                io.to(tableId).emit('playerRemoved', { position, playerName });
+                io.to(tableId).emit('gameStateUpdate', tables[tableId]);
 
-              if (Object.keys(tables[tableId].players).length === 0) {
-                delete tables[tableId];
+                if (Object.keys(tables[tableId].players).length === 0) {
+                  delete tables[tableId];
+                }
+                io.emit('tableListUpdated');
               }
-              io.emit('tableListUpdated');
+            } catch (err) {
+              logError('disconnect-timeout', err);
             }
           }, 30000);
         } else {
@@ -1994,30 +1998,43 @@ function placeJoker(gameState, actingPlayer, marbleOwner, moveData) {
 }
 
 function handleLanding(gameState, landingPlayer, targetPlayer, targetMarbleId) {
-  const targetMarble = gameState.players[targetPlayer].marbles[targetMarbleId];
-  const teammate = getTeammate(gameState, landingPlayer);
+  // Use iterative approach with a queue to prevent stack overflow from chain reactions
+  const queue = [{ landingPlayer, targetPlayer, targetMarbleId }];
+  const processed = new Set();
 
-  if (targetPlayer === teammate) {
-    // Send teammate to home entry
-    const homeEntry = gameState.board[targetPlayer].homeEntry;
+  while (queue.length > 0) {
+    const { landingPlayer: lp, targetPlayer: tp, targetMarbleId: tmId } = queue.shift();
 
-    // Check if there's already a marble at the home entry (for chain reactions)
-    const occupant = getMarbleOnTrack(gameState, homeEntry);
+    // Prevent infinite loops - skip if we already processed this marble
+    const key = `${tp}-${tmId}`;
+    if (processed.has(key)) continue;
+    processed.add(key);
 
-    targetMarble.position = homeEntry;
-    gameState.currentMoveLandingEffects.push({ targetPlayer, type: 'teammate' });
+    const targetMarble = gameState.players[tp].marbles[tmId];
+    const teammate = getTeammate(gameState, lp);
 
-    // If there's an occupant at the home entry, trigger chain reaction
-    if (occupant) {
-      handleLanding(gameState, targetPlayer, occupant.player, occupant.marbleId);
+    if (tp === teammate) {
+      // Send teammate to home entry
+      const homeEntry = gameState.board[tp].homeEntry;
+
+      // Check if there's already a marble at the home entry BEFORE moving
+      const occupant = getMarbleOnTrack(gameState, homeEntry);
+
+      targetMarble.position = homeEntry;
+      gameState.currentMoveLandingEffects.push({ targetPlayer: tp, type: 'teammate' });
+
+      // If there's an occupant at the home entry, queue chain reaction
+      if (occupant && !processed.has(`${occupant.player}-${occupant.marbleId}`)) {
+        queue.push({ landingPlayer: tp, targetPlayer: occupant.player, targetMarbleId: occupant.marbleId });
+      }
+    } else {
+      // Send enemy back to start
+      const startIndex = parseInt(tmId.replace('marble', ''));
+      targetMarble.location = 'start';
+      targetMarble.position = startIndex;
+      gameState.board[tp].start[startIndex].marble = tp;
+      gameState.currentMoveLandingEffects.push({ targetPlayer: tp, type: 'enemy' });
     }
-  } else {
-    // Send enemy back to start
-    const startIndex = parseInt(targetMarbleId.replace('marble', ''));
-    targetMarble.location = 'start';
-    targetMarble.position = startIndex;
-    gameState.board[targetPlayer].start[startIndex].marble = targetPlayer;
-    gameState.currentMoveLandingEffects.push({ targetPlayer, type: 'enemy' });
   }
 }
 

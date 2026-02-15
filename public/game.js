@@ -246,8 +246,8 @@ socket.on('gameStateUpdate', (state) => {
     const previousIndex = gameState ? gameState.currentPlayerIndex : null;
     const previousPlayer = gameState ? gameState.playerOrder[gameState.currentPlayerIndex] : null;
 
-    // Capture old moves log length to detect new discard entries
-    const oldMovesLogLength = gameState && gameState.movesLog ? gameState.movesLog.length : 0;
+    // Capture the latest move timestamp to detect new entries (length-based check breaks when log is capped at 20)
+    const oldLatestTimestamp = gameState && gameState.movesLog && gameState.movesLog.length > 0 ? gameState.movesLog[0].timestamp : 0;
 
     // Capture old marble positions before updating state
     const oldPositions = captureMarblePositions();
@@ -308,8 +308,8 @@ socket.on('gameStateUpdate', (state) => {
         renderGame();
 
         // Check for discard animation AFTER rendering so the animated element isn't wiped
-        const newMovesLogLength = gameState.movesLog ? gameState.movesLog.length : 0;
-        if (newMovesLogLength > oldMovesLogLength && gameState.movesLog.length > 0) {
+        const newLatestTimestamp = gameState.movesLog && gameState.movesLog.length > 0 ? gameState.movesLog[0].timestamp : 0;
+        if (newLatestTimestamp > oldLatestTimestamp) {
             const latestMove = gameState.movesLog[0];
             if (latestMove.action === 'discarded') {
                 const discardingPlayer = gameState.playerOrder.find(seat =>
