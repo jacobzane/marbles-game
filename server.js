@@ -1297,7 +1297,8 @@ io.on('connection', (socket) => {
         cardIndex: cardIndex,
         cardType: cardType,
         firstMove: moveData,
-        remainingSpaces: remainingSpaces
+        remainingSpaces: remainingSpaces,
+        firstPhaseLandingEffects: [...gameState.currentMoveLandingEffects]
       };
 
       io.to(gameState.id).emit('gameStateUpdate', gameState);
@@ -1350,7 +1351,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    gameState.currentMoveLandingEffects = [];
+    gameState.currentMoveLandingEffects = [...pending.firstPhaseLandingEffects];
     let result;
     if (pending.cardType === 7) {
       result = moveForward(gameState, marbleOwner, moveData, pending.remainingSpaces);
